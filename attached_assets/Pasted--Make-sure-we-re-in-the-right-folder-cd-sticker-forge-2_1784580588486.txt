@@ -1,0 +1,171 @@
+# Make sure we're in the right folder
+cd ~/sticker-forge 2>/dev/null || cd sticker-forge 2>/dev/null || true
+
+# Create batch_processor.py
+cat > sticker_forge/batch_processor.py << 'EOF'
+from pathlib import Path
+from typing import Optional
+from .video_processor import process_green_screen_to_sticker
+
+def forge_sticker_set(
+    input_folder: str,
+    output_folder: str,
+    theme: str = "default",
+    overwrite: bool = False,
+    verbose: bool = False
+):
+    """Batch process a folder of green-screen clips into Telegram stickers."""
+    in_dir = Path(input_folder).resolve()
+    out_dir = Path(output_folder).resolve()
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    clips = sorted([p for p in in_dir.glob("*.mp4") if p.is_file()])
+    if not clips:
+        raise ValueError(f"No .mp4 files found in {in_dir}")
+
+    processed = []
+    for clip in clips:
+        stem = clip.stem.replace("_green", "").replace("_greenscreen", "")
+        out_webm = out_dir / f"{stem}.webm"
+
+        result = process_green_screen_to_sticker(
+            input_video=str(clip),
+            output_webm=str(out_webm),
+            overwrite=overwrite,
+            verbose=verbose
+        )
+        processed.append(result)
+        if verbose:
+            print(f"Processed: {clip.name} → {out_webm.name}")
+
+    return {
+        "output_folder": str(out_dir),
+        "stickers": processed,
+        "count": len(processed)
+    }
+EOF
+
+# Create telegram_uploader.py
+cat > sticker_forge/telegram_uploader.py << 'EOF'
+import random
+import time
+from pathlib import Path
+from typing import Optional, List
+import requests
+from .themes import get_theme
+
+class StickerUploader:
+    def __init__(self, bot_token: str, user_id: int, theme: str = "default"):
+        self.token = bot_token
+        self.user_id = user_id
+        self.theme = get_theme(theme)
+        self.base_url = f"https://api.telegram.org/bot{bot_token}"
+
+    def _make_request(self, method: str, data: dict = None, files: dict = None):
+        url = f"{self.base_url}/{method}"
+        try:
+            if files:
+                resp = requests.post(url, data=data, files=files, timeout=60)
+            else:
+                resp = requests.post(url, json=data, timeout=30)
+            result = resp.json()
+            if not result.get("ok"):
+                raise RuntimeError(f"Telegram error on {method}: {result.get('description')}")
+            return result["result"]
+        except requests.exceptions.RequestException as e:
+            raise RuntimeError(f"Network error on {method}: {e}")
+
+    def upload_from_folder(
+        self,
+        folder: str,
+        set_name_base: str,
+        set_title: str,
+        chat_id: Optional[int] = None,
+        savage: bool = False,
+        verbose: bool = True
+    ):
+        folder_path = Path(folder).resolve()
+        webm_files = sorted(folder_path.glob("*.webm"))
+        if not webm_files:
+            raise ValueError("No .webm files found.")
+
+        # TODO: Full createNewStickerSet + addStickerToSet implementation
+        # (Can be added later — core structure is ready)
+
+        share_link = f"https://t.me/addstickers/{set_name_base}_by_YOURBOT"
+
+        if chat_id and savage and self.theme.get("savage_roasts"):
+            roast = random.choice(self.theme["savage_roasts"]).format(link=share_link)
+            try:
+                self._make_request("sendMessage", {
+                    "chat_id": chat_id,
+                    "text": roast
+                })
+            except Exception as e:
+                if verbose:
+                    print(f"[WARN] Could not send savage message: {e}")
+
+        return {
+            "share_link": share_link,
+            "count": len(webm_files)
+        }
+EOF
+
+# Create __init__.py
+cat > sticker_forge/__init__.py << 'EOF'
+from .prompt_builder import build_prompt
+from .video_processor import process_green_screen_to_sticker
+from .batch_processor import forge_sticker_set
+from .telegram_uploader import StickerUploader
+from .themes import get_theme
+
+__version__ = "0.3.0"
+EOF
+
+# Create examples/basic_usage.py
+cat > examples/basic_usage.py << 'EOF'
+from sticker_forge import build_prompt, forge_sticker_set, StickerUploader, get_theme
+
+print("=== Sticker Forge Framework Demo ===\n")
+
+# Example 1: Default theme
+prompt = build_prompt(
+    "bored queen character doing a slow swivel animation",
+    theme="default"
+)
+print("DEFAULT THEME PROMPT:\n", prompt[:200], "...\n")
+
+# Example 2: Degen theme
+prompt = build_prompt(
+    "bored queen character doing a slow swivel animation",
+    theme="degen",
+    character_name="Spade Queen"
+)
+print("DEGEN THEME PROMPT:\n", prompt[:250], "...\n")
+
+print("\nTheme system loaded successfully!")
+print("Available themes:", list(get_theme.__globals__['THEMES'].keys()))
+EOF
+
+# Create requirements.txt
+echo "requests" > requirements.txt
+
+# Update README.md (simple but proper)
+cat > README.md << 'EOF'
+# Sticker Forge
+
+A clean, modular Python framework for turning green-screen animations into Telegram sticker sets.
+
+## Features
+- Theme system (default + degen + easy to add more)
+- Prompt builder with technical rules
+- FFmpeg-based video processor
+- Batch processing
+- Telegram auto-uploader (with optional savage commentary)
+
+## Quick Start
+
+```bash
+git clone https://github.com/RandomlyWrite/sticker-forge.git
+cd sticker-forge
+pip install -r requirements.txt
