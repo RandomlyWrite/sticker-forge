@@ -7,3 +7,4 @@ httpx
 aiofiles
 python-telegram-bot
 Pillow
+requests
