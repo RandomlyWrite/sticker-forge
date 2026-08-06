@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import random
 import re
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -11,61 +13,82 @@ from .themes import get_theme
 
 
 class StickerUploader:
+    """Create and extend Telegram video-sticker sets."""
+
     def __init__(
         self,
         bot_token: str,
         user_id: int,
         theme: str = "default",
-    ):
+    ) -> None:
+        if not bot_token:
+            raise ValueError("bot_token is required")
+
         self.token = bot_token
-        self.user_id = user_id
+        self.user_id = int(user_id)
         self.theme = get_theme(theme)
-        self.base_url = f"https://api.telegram.org/bot{bot_token}"
+        self.base_url = (
+            f"https://api.telegram.org/bot{bot_token}"
+        )
         self.bot_username = self._get_bot_username()
 
     def _make_request(
         self,
         method: str,
-        data: dict | None = None,
-        files: dict | None = None,
-        timeout: int = 60,
+        data: Optional[dict] = None,
+        files: Optional[dict] = None,
+        timeout: int = 90,
     ):
+        """Call Telegram and preserve its useful error description."""
+
         url = f"{self.base_url}/{method}"
 
         try:
             if files:
                 response = requests.post(
                     url,
-                    data=data,
+                    data=data or {},
                     files=files,
                     timeout=timeout,
                 )
             else:
                 response = requests.post(
                     url,
-                    json=data,
+                    json=data or {},
                     timeout=timeout,
                 )
-
-            response.raise_for_status()
-            result = response.json()
-
         except requests.RequestException as exc:
             raise RuntimeError(
                 f"Network error on {method}: {exc}"
             ) from exc
+
+        try:
+            payload = response.json()
         except ValueError as exc:
+            body = response.text[:500]
+
             raise RuntimeError(
-                f"Telegram returned invalid JSON on {method}"
+                f"{method} returned invalid JSON "
+                f"(HTTP {response.status_code}): {body}"
             ) from exc
 
-        if not result.get("ok"):
-            raise RuntimeError(
-                f"Telegram error on {method}: "
-                f"{result.get('description', 'unknown error')}"
+        if not payload.get("ok"):
+            description = payload.get(
+                "description",
+                "Unknown Telegram error",
             )
 
-        return result["result"]
+            error_code = payload.get(
+                "error_code",
+                response.status_code,
+            )
+
+            raise RuntimeError(
+                f"Telegram error on {method} "
+                f"({error_code}): {description}"
+            )
+
+        return payload["result"]
 
     def _get_bot_username(self) -> str:
         result = self._make_request("getMe")
@@ -73,15 +96,38 @@ class StickerUploader:
 
         if not username:
             raise RuntimeError(
-                "Telegram bot has no username."
+                "The Telegram bot does not have a username."
             )
 
-        return username
+        return str(username)
 
-    def _safe_set_name(self, value: str) -> str:
-        cleaned = value.lower()
-        cleaned = re.sub(r"[^a-z0-9_]+", "_", cleaned)
-        cleaned = re.sub(r"_+", "_", cleaned)
+    def _safe_set_name(
+        self,
+        value: str,
+        unique: bool = True,
+    ) -> str:
+        """
+        Build a legal Telegram sticker-set short name.
+
+        It must:
+        - begin with a letter
+        - contain only letters, digits, and underscores
+        - avoid consecutive underscores
+        - end with _by_<bot username>
+        - stay within 64 characters
+        """
+
+        cleaned = value.lower().strip()
+        cleaned = re.sub(
+            r"[^a-z0-9_]+",
+            "_",
+            cleaned,
+        )
+        cleaned = re.sub(
+            r"_+",
+            "_",
+            cleaned,
+        )
         cleaned = cleaned.strip("_")
 
         if not cleaned:
@@ -90,12 +136,41 @@ class StickerUploader:
         if not cleaned[0].isalpha():
             cleaned = f"set_{cleaned}"
 
-        suffix = f"_by_{self.bot_username}"
-        max_prefix = 64 - len(suffix)
+        if unique:
+            cleaned = (
+                f"{cleaned}_{self.user_id}_{int(time.time())}"
+            )
 
-        cleaned = cleaned[:max_prefix].rstrip("_")
+        suffix = f"_by_{self.bot_username}"
+        max_prefix_length = 64 - len(suffix)
+
+        cleaned = cleaned[
+            :max_prefix_length
+        ].rstrip("_")
+
+        if not cleaned:
+            cleaned = "stickers"
 
         return f"{cleaned}{suffix}"
+
+    @staticmethod
+    def _normalize_emojis(
+        emojis: Optional[list[str]],
+        file_count: int,
+    ) -> list[str]:
+        values = [
+            str(value).strip()
+            for value in (emojis or [])
+            if str(value).strip()
+        ]
+
+        if not values:
+            values = ["🔥"]
+
+        while len(values) < file_count:
+            values.append(values[-1])
+
+        return values[:file_count]
 
     def _create_new_set(
         self,
@@ -104,21 +179,32 @@ class StickerUploader:
         set_title: str,
         emoji: str,
     ) -> None:
+        attachment_name = "sticker_file"
+
+        input_sticker = {
+            "sticker": f"attach://{attachment_name}",
+            "format": "video",
+            "emoji_list": [emoji],
+        }
+
+        data = {
+            "user_id": str(self.user_id),
+            "name": set_name,
+            "title": set_title,
+            "stickers": json.dumps(
+                [input_sticker],
+                ensure_ascii=False,
+            ),
+            "sticker_type": "regular",
+        }
+
         with webm_file.open("rb") as file_handle:
             files = {
-                "sticker": (
+                attachment_name: (
                     webm_file.name,
                     file_handle,
                     "video/webm",
                 )
-            }
-
-            data = {
-                "user_id": str(self.user_id),
-                "name": set_name,
-                "title": set_title,
-                "sticker_format": "video",
-                "emojis": emoji,
             }
 
             self._make_request(
@@ -133,20 +219,30 @@ class StickerUploader:
         set_name: str,
         emoji: str,
     ) -> None:
+        attachment_name = "sticker_file"
+
+        input_sticker = {
+            "sticker": f"attach://{attachment_name}",
+            "format": "video",
+            "emoji_list": [emoji],
+        }
+
+        data = {
+            "user_id": str(self.user_id),
+            "name": set_name,
+            "sticker": json.dumps(
+                input_sticker,
+                ensure_ascii=False,
+            ),
+        }
+
         with webm_file.open("rb") as file_handle:
             files = {
-                "sticker": (
+                attachment_name: (
                     webm_file.name,
                     file_handle,
                     "video/webm",
                 )
-            }
-
-            data = {
-                "user_id": str(self.user_id),
-                "name": set_name,
-                "sticker_format": "video",
-                "emojis": emoji,
             }
 
             self._make_request(
@@ -164,7 +260,9 @@ class StickerUploader:
         savage: bool = False,
         verbose: bool = True,
         emojis: Optional[list[str]] = None,
-    ):
+    ) -> dict:
+        """Upload every WebM in a folder to one new sticker set."""
+
         folder_path = Path(folder).resolve()
 
         webm_files = sorted(
@@ -178,19 +276,39 @@ class StickerUploader:
                 f"No .webm files found in {folder_path}"
             )
 
-        set_name = self._safe_set_name(set_name_base)
-        title = set_title.strip()[:64] or "Sticker Forge"
+        # Regular sticker sets currently support up to 120 items.
+        if len(webm_files) > 120:
+            raise ValueError(
+                "This uploader currently handles one set at a "
+                "time, with a maximum of 120 stickers."
+            )
 
-        emoji_list = emojis or ["🔥"]
-        default_emoji = emoji_list[0] if emoji_list else "🔥"
+        title = " ".join(set_title.split())[:64]
 
-        first = webm_files[0]
+        if not title:
+            title = "Sticker Forge"
+
+        set_name = self._safe_set_name(
+            set_name_base,
+            unique=True,
+        )
+
+        emoji_values = self._normalize_emojis(
+            emojis,
+            len(webm_files),
+        )
+
+        if verbose:
+            print(
+                f"Creating set {set_name} with "
+                f"{len(webm_files)} sticker(s)"
+            )
 
         self._create_new_set(
-            webm_file=first,
+            webm_file=webm_files[0],
             set_name=set_name,
             set_title=title,
-            emoji=default_emoji,
+            emoji=emoji_values[0],
         )
 
         uploaded = 1
@@ -199,21 +317,18 @@ class StickerUploader:
             webm_files[1:],
             start=1,
         ):
-            emoji = emoji_list[
-                min(index, len(emoji_list) - 1)
-            ]
-
             self._add_to_set(
                 webm_file=webm_file,
                 set_name=set_name,
-                emoji=emoji,
+                emoji=emoji_values[index],
             )
 
             uploaded += 1
 
             if verbose:
                 print(
-                    f"Uploaded {uploaded}/{len(webm_files)}: "
+                    f"Uploaded {uploaded}/"
+                    f"{len(webm_files)}: "
                     f"{webm_file.name}"
                 )
 
@@ -222,7 +337,7 @@ class StickerUploader:
         )
 
         if (
-            chat_id
+            chat_id is not None
             and savage
             and self.theme.get("savage_roasts")
         ):
@@ -241,7 +356,8 @@ class StickerUploader:
             except Exception as exc:
                 if verbose:
                     print(
-                        f"[WARN] Could not send themed message: {exc}"
+                        "[WARN] Could not send themed "
+                        f"message: {exc}"
                     )
 
         return {
