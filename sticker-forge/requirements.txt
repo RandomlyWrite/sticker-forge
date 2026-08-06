@@ -1,1 +1,9 @@
-requests
+fastapi
+uvicorn[standard]
+python-multipart
+pydantic
+pydantic-settings
+httpx
+aiofiles
+python-telegram-bot
+Pillow
