@@ -1,7 +1,7 @@
 import os
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 
 app = FastAPI(
     title="Sticker Forge",
@@ -9,8 +9,8 @@ app = FastAPI(
 )
 
 
-@app.get("/")
-def root() -> dict:
+@app.api_route("/", methods=["GET", "HEAD"])
+def root():
     return {
         "service": "Sticker Forge",
         "status": "running",
@@ -18,13 +18,12 @@ def root() -> dict:
     }
 
 
-@app.get("/health")
-def health() -> dict:
+@app.api_route("/health", methods=["GET", "HEAD"])
+def health():
     return {
         "status": "ok",
-        "ffmpeg_required": True,
+        "service": "sticker-forge",
     }
-
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "8000"))
