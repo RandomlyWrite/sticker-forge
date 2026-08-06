@@ -7,20 +7,30 @@ from telegram import Update
 from bot import build_bot
 
 
-telegram_app = build_bot()
+telegram_app = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global telegram_app
+
+    token = os.environ.get("BOT_TOKEN")
+    webhook_url = os.environ.get("WEBHOOK_URL")
+
+    if not token:
+        raise RuntimeError("BOT_TOKEN is missing from Render environment variables")
+
+    if not webhook_url:
+        raise RuntimeError("WEBHOOK_URL is missing from Render environment variables")
+
+    telegram_app = build_bot()
+
     await telegram_app.initialize()
     await telegram_app.start()
 
-    webhook_url = os.environ.get("WEBHOOK_URL")
-
-    if webhook_url:
-        await telegram_app.bot.set_webhook(
-            url=f"{webhook_url.rstrip('/')}/telegram"
-        )
+    await telegram_app.bot.set_webhook(
+        url=f"{webhook_url.rstrip('/')}/telegram"
+    )
 
     yield
 
@@ -48,19 +58,17 @@ async def root():
 async def health():
     return {
         "status": "ok",
-        "bot_initialized": telegram_app.bot is not None,
+        "bot_ready": telegram_app is not None,
     }
 
 
 @app.post("/telegram")
 async def telegram_webhook(request: Request):
+    if telegram_app is None:
+        return {"ok": False, "error": "bot not initialized"}
+
     data = await request.json()
-
-    update = Update.de_json(
-        data=data,
-        bot=telegram_app.bot,
-    )
-
+    update = Update.de_json(data=data, bot=telegram_app.bot)
     await telegram_app.process_update(update)
 
     return {"ok": True}
