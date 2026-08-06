@@ -196,15 +196,60 @@ def _watch_job(job, chat_id: int, timeout_s: int = 600) -> None:
 
 
 def run_bot(poll_timeout: int = 25) -> None:
+    """Run the long-polling Telegram bot loop."""
+
     if not config.BOT_TOKEN:
         log.warning("BOT_TOKEN not set; bot disabled.")
         return
+
+    # Polling and webhooks cannot coexist.
+    while True:
+        try:
+            deleted = _api(
+                "deleteWebhook",
+                json={
+                    "drop_pending_updates": True,
+                },
+            )
+
+            webhook_info = _api(
+                "getWebhookInfo",
+            )
+
+            webhook_url = webhook_info.get("url", "")
+
+            log.info(
+                "deleteWebhook result=%s; remaining webhook=%r",
+                deleted,
+                webhook_url,
+            )
+
+            if not webhook_url:
+                break
+
+            log.warning(
+                "Webhook still active at %s; retrying...",
+                webhook_url,
+            )
+
+        except Exception as exc:
+            log.warning(
+                "Webhook removal failed: %s",
+                exc,
+            )
+
+        time.sleep(3)
+
     try:
         set_menu_button()
-    except Exception as e:  # noqa: BLE001
-        log.warning("menu button setup failed: %s", e)
+    except Exception as exc:
+        log.warning(
+            "Menu button setup failed: %s",
+            exc,
+        )
 
     log.info("Bot polling started.")
+
     offset = 0
     while True:
         try:
