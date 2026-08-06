@@ -1,241 +1,480 @@
+"""Telegram bot entry point for Sticker Forge.
+
+Responsibilities:
+1. Point the Telegram chat menu button at the Mini App.
+2. Accept green-screen videos sent directly to the bot.
+3. Run the same forge-and-upload pipeline used by the Mini App.
+4. DM the resulting sticker-set link or a useful failure message.
+
+This module uses long polling through getUpdates.
+"""
+
+from __future__ import annotations
+
 import logging
-import os
+import threading
+import time
 from pathlib import Path
-from tempfile import TemporaryDirectory
+from typing import Optional
 
-from telegram import Update
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    ContextTypes,
-    MessageHandler,
-    filters,
-)
+import requests
 
-from sticker_forge.video_processor import process_green_screen_to_sticker
+from . import config, prefs
+from .emoji_util import extract_emojis, strip_emojis
+from .jobs import STORE
+from .pipeline import dm, forge_and_upload
 
 
-logging.basicConfig(
-    format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
-    level=logging.INFO,
-)
+log = logging.getLogger("sticker_forge.bot")
 
-logger = logging.getLogger(__name__)
-
-SUPPORTED_EXTENSIONS = {
-    ".mp4",
-    ".mov",
-    ".m4v",
-    ".webm",
-    ".avi",
-    ".mkv",
-}
+DOWNLOAD_DIR = Path(config.WORK_ROOT) / "bot_downloads"
 
 
-async def start(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-) -> None:
-    """Respond to /start."""
+def _api(method: str, **kwargs):
+    """Call a Telegram Bot API method and return its result."""
 
-    message = update.effective_message
-
-    if message is None:
-        return
-
-    await message.reply_text(
-        "Sticker Forge is online.\n\n"
-        "Send me a green-screen video to begin."
-    )
-
-
-def get_uploaded_video(message):
-    """
-    Extract a Telegram video or video-like document.
-
-    Returns:
-        tuple[file_object, filename] | tuple[None, None]
-    """
-
-    if message.video:
-        return message.video, "input.mp4"
-
-    if message.document:
-        document = message.document
-        filename = document.file_name or "input.mov"
-        extension = Path(filename).suffix.lower()
-        mime_type = document.mime_type or ""
-
-        is_video_mime = mime_type.startswith("video/")
-        has_video_extension = extension in SUPPORTED_EXTENSIONS
-
-        if is_video_mime or has_video_extension:
-            return document, filename
-
-    return None, None
-
-
-async def receive_video(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-) -> None:
-    """Download, process, and return a transparent WebM sticker."""
-
-    message = update.effective_message
-
-    if message is None:
-        return
-
-    media, original_name = get_uploaded_video(message)
-
-    if media is None or original_name is None:
-        await message.reply_text(
-            "That does not appear to be a supported video.\n\n"
-            "Send an MP4, MOV, M4V, WebM, AVI, or MKV file."
-        )
-        return
-
-    await message.reply_text(
-        "🔥 Video received. Preparing the forge..."
+    response = requests.post(
+        f"https://api.telegram.org/bot{config.BOT_TOKEN}/{method}",
+        timeout=kwargs.pop("timeout", 30),
+        **kwargs,
     )
 
     try:
-        telegram_file = await context.bot.get_file(media.file_id)
-    except Exception:
-        logger.exception("Could not request the uploaded file from Telegram")
+        data = response.json()
+    except ValueError as exc:
+        raise RuntimeError(
+            f"{method}: Telegram returned invalid JSON"
+        ) from exc
 
-        await message.reply_text(
-            "❌ I could not retrieve that video from Telegram."
+    if not data.get("ok"):
+        raise RuntimeError(
+            f"{method}: {data.get('description', 'unknown Telegram error')}"
+        )
+
+    return data["result"]
+
+
+def set_menu_button() -> None:
+    """Make the Telegram chat menu button open the Mini App."""
+
+    if not config.PUBLIC_URL:
+        log.warning(
+            "PUBLIC_URL not set; skipping menu-button setup."
         )
         return
 
-    with TemporaryDirectory(prefix="sticker_forge_") as temp_dir:
-        temp_path = Path(temp_dir)
-        safe_extension = Path(original_name).suffix.lower() or ".mp4"
+    _api(
+        "setChatMenuButton",
+        json={
+            "menu_button": {
+                "type": "web_app",
+                "text": "Forge Stickers",
+                "web_app": {
+                    "url": f"{config.PUBLIC_URL.rstrip('/')}/"
+                },
+            }
+        },
+    )
 
-        input_path = temp_path / f"input{safe_extension}"
-        output_path = temp_path / "sticker.webm"
+    log.info(
+        "Menu button configured for %s",
+        config.PUBLIC_URL,
+    )
 
-        try:
-            await telegram_file.download_to_drive(
-                custom_path=input_path
+
+def _download(file_id: str) -> str:
+    """Download a Telegram-hosted file to the bot work directory."""
+
+    metadata = _api(
+        "getFile",
+        json={"file_id": file_id},
+    )
+
+    file_path = metadata["file_path"]
+    download_url = (
+        f"https://api.telegram.org/file/"
+        f"bot{config.BOT_TOKEN}/{file_path}"
+    )
+
+    DOWNLOAD_DIR.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    suffix = Path(file_path).suffix or ".mp4"
+    local_path = DOWNLOAD_DIR / f"{file_id}{suffix}"
+
+    with requests.get(
+        download_url,
+        stream=True,
+        timeout=120,
+    ) as response:
+        response.raise_for_status()
+
+        with local_path.open("wb") as file_handle:
+            for chunk in response.iter_content(
+                chunk_size=8192
+            ):
+                if chunk:
+                    file_handle.write(chunk)
+
+    return str(local_path)
+
+
+def _video_file_id(message: dict) -> Optional[str]:
+    """Return the file ID for a video-like Telegram message."""
+
+    if "video" in message:
+        return message["video"]["file_id"]
+
+    if "animation" in message:
+        return message["animation"]["file_id"]
+
+    document = message.get("document")
+
+    if document:
+        mime_type = str(
+            document.get("mime_type", "")
+        )
+
+        if mime_type.startswith("video/"):
+            return document["file_id"]
+
+        filename = str(
+            document.get("file_name", "")
+        ).lower()
+
+        if filename.endswith(
+            (
+                ".mp4",
+                ".mov",
+                ".m4v",
+                ".webm",
+                ".avi",
+                ".mkv",
             )
-        except Exception:
-            logger.exception("Video download failed")
+        ):
+            return document["file_id"]
 
-            await message.reply_text(
-                "❌ The video reached the bot, but its download failed."
-            )
-            return
+    return None
 
-        input_size_mb = input_path.stat().st_size / (1024 * 1024)
 
-        await message.reply_text(
-            "✅ Download complete.\n"
-            f"File: {original_name}\n"
-            f"Size: {input_size_mb:.2f} MB\n\n"
-            "⚒️ Removing the green screen and forging the sticker..."
+def _send_theme_keyboard(
+    chat_id: int,
+    current: str,
+) -> None:
+    """Show the saved-theme picker."""
+
+    def label(name: str) -> str:
+        prefix = "✅ " if name == current else ""
+        return prefix + name.capitalize()
+
+    _api(
+        "sendMessage",
+        json={
+            "chat_id": chat_id,
+            "text": (
+                f"Your current theme is *{current}*. "
+                "Pick one:"
+            ),
+            "parse_mode": "Markdown",
+            "reply_markup": {
+                "inline_keyboard": [
+                    [
+                        {
+                            "text": label("default"),
+                            "callback_data": "theme:default",
+                        },
+                        {
+                            "text": label("degen"),
+                            "callback_data": "theme:degen",
+                        },
+                    ]
+                ]
+            },
+        },
+    )
+
+
+def _handle_callback(callback: dict) -> None:
+    """Handle inline-keyboard callbacks."""
+
+    data = callback.get("data", "")
+    user_id = callback["from"]["id"]
+
+    message = callback.get("message", {})
+    chat_id = (
+        message.get("chat", {}).get("id")
+    )
+    message_id = message.get("message_id")
+
+    if data.startswith("theme:"):
+        requested = data.split(":", 1)[1]
+
+        chosen = prefs.set_theme_pref(
+            user_id,
+            requested,
         )
 
         try:
-            process_green_screen_to_sticker(
-                str(input_path),
-                str(output_path),
+            _api(
+                "editMessageText",
+                json={
+                    "chat_id": chat_id,
+                    "message_id": message_id,
+                    "text": (
+                        f"Theme set to *{chosen}* ✅"
+                    ),
+                    "parse_mode": "Markdown",
+                },
+            )
+        except Exception:
+            log.exception(
+                "Could not edit theme confirmation message"
+            )
+
+    try:
+        _api(
+            "answerCallbackQuery",
+            json={
+                "callback_query_id": callback["id"]
+            },
+        )
+    except Exception:
+        log.exception(
+            "Could not answer callback query"
+        )
+
+
+def _handle_message(message: dict) -> None:
+    """Handle commands and direct video uploads."""
+
+    chat = message.get("chat", {})
+    sender = message.get("from", {})
+
+    chat_id = chat.get("id")
+    user_id = sender.get("id")
+
+    if chat_id is None or user_id is None:
+        return
+
+    text = message.get("text", "") or ""
+
+    if text.startswith("/start"):
+        dm(
+            chat_id,
+            "Welcome to Sticker Forge! 🔨\n\n"
+            "Tap the menu button to open the Mini App, "
+            "or send me a green-screen video and I’ll "
+            "forge a sticker set.\n\n"
+            "Commands:\n"
+            "/theme - choose your default look "
+            "(default / degen)\n\n"
+            "Tip: caption the video to name the set. "
+            "Any emoji in the caption become that "
+            "sticker’s tags. Include “degen” to "
+            "override the saved theme for one upload.",
+        )
+        return
+
+    if text.startswith("/theme"):
+        current = prefs.get_theme_pref(user_id)
+
+        _send_theme_keyboard(
+            chat_id,
+            current,
+        )
+        return
+
+    file_id = _video_file_id(message)
+
+    if not file_id:
+        return
+
+    caption = message.get("caption", "") or ""
+
+    caption_emojis = extract_emojis(caption)
+    title_text = strip_emojis(caption)
+
+    saved_theme = prefs.get_theme_pref(user_id)
+
+    if "degen" in title_text.lower():
+        theme = "degen"
+    else:
+        theme = saved_theme
+
+    cleaned_title = title_text.replace(
+        "degen",
+        "",
+    ).strip()
+
+    title = cleaned_title or "My Stickers"
+
+    status_text = "Forging your stickers… 🔨"
+
+    if caption_emojis:
+        status_text += (
+            "\nTagging with "
+            + " ".join(caption_emojis)
+        )
+
+    dm(
+        chat_id,
+        status_text,
+    )
+
+    try:
+        local_path = _download(file_id)
+    except Exception as exc:
+        log.exception(
+            "Telegram file download failed"
+        )
+
+        dm(
+            chat_id,
+            "Couldn’t download that video.\n\n"
+            f"{type(exc).__name__}: {exc}\n\n"
+            "Try the Mini App for larger files.",
+        )
+        return
+
+    job = STORE.submit(
+        forge_and_upload,
+        [local_path],
+        user_id,
+        theme,
+        title,
+        chat_id=chat_id,
+        emojis=caption_emojis or None,
+    )
+
+    _watch_job(
+        job,
+        chat_id,
+    )
+
+
+def _watch_job(
+    job,
+    chat_id: int,
+    timeout_s: int = 600,
+) -> None:
+    """Report asynchronous job failures and stalls."""
+
+    def _wait() -> None:
+        waited = 0
+
+        while waited < timeout_s:
+            if job.status == "error":
+                dm(
+                    chat_id,
+                    "That clip couldn’t be forged ⚠️\n"
+                    f"{job.error or 'Unknown error'}\n\n"
+                    "Try a shorter clip, or one with a "
+                    "solid, evenly-lit green background.",
+                )
+                return
+
+            if job.status == "done":
+                return
+
+            time.sleep(2)
+            waited += 2
+
+        dm(
+            chat_id,
+            "That clip is taking unusually long and "
+            "may have stalled ⏳\n"
+            "Try a shorter clip, preferably 2 to 3 "
+            "seconds, or a smaller file.",
+        )
+
+    threading.Thread(
+        target=_wait,
+        daemon=True,
+        name=f"watch-job-{job.id[:8]}",
+    ).start()
+
+
+def run_bot(
+    poll_timeout: int = 25,
+) -> None:
+    """Run the long-polling Telegram bot loop."""
+
+    if not config.BOT_TOKEN:
+        log.warning(
+            "BOT_TOKEN not set; bot disabled."
+        )
+        return
+
+    try:
+        _api(
+            "deleteWebhook",
+            json={
+                "drop_pending_updates": False,
+            },
+        )
+
+        log.info(
+            "Existing Telegram webhook removed."
+        )
+    except Exception as exc:
+        log.warning(
+            "Webhook removal failed: %s",
+            exc,
+        )
+
+    try:
+        set_menu_button()
+    except Exception as exc:
+        log.warning(
+            "Menu button setup failed: %s",
+            exc,
+        )
+
+    log.info("Bot polling started.")
+
+    offset = 0
+
+    while True:
+        try:
+            updates = _api(
+                "getUpdates",
+                json={
+                    "offset": offset,
+                    "timeout": poll_timeout,
+                    "allowed_updates": [
+                        "message",
+                        "callback_query",
+                    ],
+                },
+                timeout=poll_timeout + 10,
             )
         except Exception as exc:
-            logger.exception("Sticker conversion failed")
-
-            error_text = str(exc).strip()
-
-            if len(error_text) > 700:
-                error_text = error_text[-700:]
-
-            await message.reply_text(
-                "❌ Conversion failed.\n\n"
-                f"{type(exc).__name__}: "
-                f"{error_text or 'No error details were returned.'}"
-            )
-            return
-
-        if not output_path.exists():
-            logger.error(
-                "Processor completed without creating %s",
-                output_path,
+            log.warning(
+                "getUpdates error: %s",
+                exc,
             )
 
-            await message.reply_text(
-                "❌ The conversion process finished, but no WebM file "
-                "was created."
-            )
-            return
+            time.sleep(3)
+            continue
 
-        output_size = output_path.stat().st_size
-        output_size_kb = output_size / 1024
+        for update in updates:
+            offset = update["update_id"] + 1
 
-        if output_size == 0:
-            await message.reply_text(
-                "❌ The converter produced an empty WebM file."
-            )
-            return
+            try:
+                if "message" in update:
+                    _handle_message(
+                        update["message"]
+                    )
 
-        try:
-            with output_path.open("rb") as sticker_file:
-                await message.reply_document(
-                    document=sticker_file,
-                    filename="sticker.webm",
-                    caption=(
-                        "✅ Sticker forged.\n"
-                        f"Output size: {output_size_kb:.1f} KB"
-                    ),
+                elif "callback_query" in update:
+                    _handle_callback(
+                        update["callback_query"]
+                    )
+
+            except Exception as exc:
+                log.exception(
+                    "Telegram update handler failed: %s",
+                    exc,
                 )
-        except Exception:
-            logger.exception("Could not send converted sticker")
-
-            await message.reply_text(
-                "❌ The sticker was converted, but Telegram refused "
-                "the finished file."
-            )
-
-
-async def error_handler(
-    update: object,
-    context: ContextTypes.DEFAULT_TYPE,
-) -> None:
-    """Log unexpected Telegram handler errors."""
-
-    logger.error(
-        "Unhandled Telegram bot error",
-        exc_info=context.error,
-    )
-
-
-def build_bot() -> Application:
-    """Create and configure the Telegram application."""
-
-    token = os.environ.get("BOT_TOKEN", "").strip()
-
-    if not token:
-        raise RuntimeError(
-            "BOT_TOKEN is missing from the Render environment."
-        )
-
-    application = (
-        Application.builder()
-        .token(token)
-        .build()
-    )
-
-    application.add_handler(
-        CommandHandler("start", start)
-    )
-
-    application.add_handler(
-        MessageHandler(
-            filters.VIDEO | filters.Document.ALL,
-            receive_video,
-        )
-    )
-
-    application.add_error_handler(error_handler)
-
-    return application
