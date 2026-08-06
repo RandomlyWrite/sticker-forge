@@ -37,7 +37,7 @@ def process_green_screen_to_sticker(
     target_size: int = 512,
     max_duration_s: float = 3.0,
     bitrate: str = "200K",
-    similarity: float = 0.36,
+    similarity: float = 0.30,
     blend: float = 0.08,
     overwrite: bool = False,
     verbose: bool = False,
