@@ -1,0 +1,9 @@
+.git
+.gitignore
+__pycache__
+*.py[cod]
+.pytest_cache
+node_modules
+artifacts
+attached_assets
+*.zip
