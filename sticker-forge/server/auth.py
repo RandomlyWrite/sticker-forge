@@ -9,7 +9,6 @@ from urllib.parse import parse_qsl
 
 from . import config
 
-
 MAX_INIT_DATA_AGE_SECONDS = 24 * 60 * 60
 
 
@@ -27,94 +26,36 @@ class InitDataError(ValueError):
     pass
 
 
-def validate_init_data(
-    init_data: str,
-    max_age_seconds: int = MAX_INIT_DATA_AGE_SECONDS,
-) -> TelegramUser:
-    """
-    Validate Telegram Mini App initData and return the trusted user.
-
-    Never trust a user_id sent separately by the browser.
-    """
-
+def validate_init_data(init_data: str, max_age_seconds: int = MAX_INIT_DATA_AGE_SECONDS) -> TelegramUser:
     if not config.BOT_TOKEN:
-        raise InitDataError("BOT_TOKEN is not configured.")
-
+        raise InitDataError("BOT_TOKEN is not configured")
     if not init_data:
-        raise InitDataError(
-            "Telegram initData is missing. Open this page from the bot."
-        )
-
-    values = dict(parse_qsl(init_data, keep_blank_values=True))
+        raise InitDataError("Telegram initData is missing. Open Sticker Forge from the bot")
+    pairs = parse_qsl(init_data, keep_blank_values=True)
+    values = dict(pairs)
     received_hash = values.pop("hash", None)
-
     if not received_hash:
-        raise InitDataError("Telegram initData has no hash.")
-
-    data_check_string = "\n".join(
-        f"{key}={values[key]}"
-        for key in sorted(values)
-    )
-
-    secret_key = hmac.new(
-        key=b"WebAppData",
-        msg=config.BOT_TOKEN.encode("utf-8"),
-        digestmod=hashlib.sha256,
-    ).digest()
-
-    calculated_hash = hmac.new(
-        key=secret_key,
-        msg=data_check_string.encode("utf-8"),
-        digestmod=hashlib.sha256,
-    ).hexdigest()
-
-    if not hmac.compare_digest(calculated_hash, received_hash):
-        raise InitDataError("Telegram initData signature is invalid.")
-
-    auth_date_raw = values.get("auth_date")
-
-    if not auth_date_raw:
-        raise InitDataError("Telegram initData has no auth_date.")
-
+        raise InitDataError("Telegram initData has no hash")
+    data_check_string = "\n".join(f"{key}={values[key]}" for key in sorted(values))
+    secret_key = hmac.new(b"WebAppData", config.BOT_TOKEN.encode("utf-8"), hashlib.sha256).digest()
+    calculated = hmac.new(secret_key, data_check_string.encode("utf-8"), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(calculated, received_hash):
+        raise InitDataError("Telegram initData signature is invalid")
     try:
-        auth_date = int(auth_date_raw)
+        auth_date = int(values.get("auth_date", "0"))
     except ValueError as exc:
-        raise InitDataError(
-            "Telegram initData has an invalid auth_date."
-        ) from exc
-
+        raise InitDataError("Telegram initData auth_date is invalid") from exc
     age = int(time.time()) - auth_date
-
     if age < -60:
-        raise InitDataError(
-            "Telegram initData appears to come from the future."
-        )
-
+        raise InitDataError("Telegram initData appears to come from the future")
     if age > max_age_seconds:
-        raise InitDataError(
-            "Telegram initData has expired. Reopen the Mini App."
-        )
-
-    user_raw = values.get("user")
-
-    if not user_raw:
-        raise InitDataError("Telegram initData contains no user.")
-
+        raise InitDataError("Telegram initData expired. Reopen the Mini App")
     try:
-        user_data = json.loads(user_raw)
-    except json.JSONDecodeError as exc:
-        raise InitDataError(
-            "Telegram user data is malformed."
-        ) from exc
-
-    try:
+        user_data = json.loads(values["user"])
         user_id = int(user_data["id"])
         first_name = str(user_data["first_name"])
-    except (KeyError, TypeError, ValueError) as exc:
-        raise InitDataError(
-            "Telegram user data is incomplete."
-        ) from exc
-
+    except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise InitDataError("Telegram initData contains invalid user data") from exc
     return TelegramUser(
         id=user_id,
         first_name=first_name,
@@ -123,3 +64,25 @@ def validate_init_data(
         language_code=user_data.get("language_code"),
         is_premium=bool(user_data.get("is_premium", False)),
     )
+
+
+def _scoped_token(scope: str, job_id: str, user_id: int) -> str:
+    key = (config.BOT_TOKEN or "sticker-forge").encode("utf-8")
+    message = f"{scope}:{job_id}:{int(user_id)}".encode("utf-8")
+    return hmac.new(key, message, hashlib.sha256).hexdigest()[:32]
+
+
+def preview_token(job_id: str, user_id: int) -> str:
+    return _scoped_token("preview", job_id, user_id)
+
+
+def verify_preview_token(token: str, job_id: str, user_id: int) -> bool:
+    return hmac.compare_digest(str(token or ""), preview_token(job_id, user_id))
+
+
+def job_token(job_id: str, user_id: int) -> str:
+    return _scoped_token("job", job_id, user_id)
+
+
+def verify_job_token(token: str, job_id: str, user_id: int) -> bool:
+    return hmac.compare_digest(str(token or ""), job_token(job_id, user_id))
