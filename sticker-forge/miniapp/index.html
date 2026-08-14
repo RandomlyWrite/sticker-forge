@@ -1,28 +1,114 @@
-🔨
-Sticker Forge
-Green screen → transparent VP9 → Telegram sticker set
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no" />
+  <meta name="theme-color" content="#0a0b0d" />
+  <title>Sticker Forge</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    :root{color-scheme:dark;--bg:#090a0c;--panel:#111317;--panel2:#171a20;--line:#282d36;--text:#f7f7f8;--muted:#9299a6;--accent:#f0b85b;--accent2:#ffd98f;--good:#48d597;--bad:#ff6b6b;--warn:#f0b85b}
+    *{box-sizing:border-box}html,body{margin:0;min-height:100%;background:radial-gradient(circle at 50% -10%,#242019 0,#0e0f12 34%,#090a0c 70%);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--text)}
+    body{padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}button,input,select{font:inherit}.app{width:min(760px,100%);margin:0 auto;padding:18px 16px 42px}
+    .hero{display:flex;align-items:center;gap:13px;margin:6px 2px 18px}.mark{width:52px;height:52px;border-radius:17px;display:grid;place-items:center;font-size:27px;background:linear-gradient(145deg,#2b2419,#15171a);border:1px solid #403521;box-shadow:0 10px 30px #0008,inset 0 0 24px #e6a94a16}.hero h1{font-size:25px;line-height:1.05;margin:0}.hero p{margin:5px 0 0;color:var(--muted);font-size:13px}.online{margin-left:auto;display:flex;align-items:center;gap:7px;color:var(--muted);font-size:12px}.dot{width:8px;height:8px;border-radius:50%;background:var(--good);box-shadow:0 0 13px var(--good)}
+    .banner{display:none;padding:12px 14px;border:1px solid #51431f;background:#211c12;border-radius:14px;margin:0 0 14px;color:#f6d795;font-size:13px;line-height:1.4}.banner.show{display:block}
+    .card{background:linear-gradient(180deg,#13161a,#0f1114);border:1px solid var(--line);border-radius:20px;padding:16px;margin:12px 0;box-shadow:0 18px 50px #0004}.card h2{margin:0 0 13px;font-size:15px;letter-spacing:.01em}.label{display:block;color:#c9cdd4;font-size:12px;font-weight:700;margin:12px 0 7px}
+    .text{width:100%;border:1px solid #303640;border-radius:13px;background:#0b0d10;color:white;padding:13px 14px;outline:none}.text:focus{border-color:#8d6b35;box-shadow:0 0 0 3px #dba64d17}
+    .segments{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}.segments.two{grid-template-columns:repeat(2,1fr)}.seg{border:1px solid #313741;border-radius:13px;background:#0d0f12;color:#aeb4bf;padding:11px 7px;min-height:48px;font-weight:750;font-size:13px}.seg small{display:block;font-weight:500;color:#6f7682;font-size:10px;margin-top:2px}.seg.active{color:#17120a;background:linear-gradient(180deg,var(--accent2),var(--accent));border-color:#d6a44e;box-shadow:0 5px 20px #d99f3e24}.seg.active small{color:#574322}
+    .drop{position:relative;border:1px dashed #4a505b;border-radius:17px;padding:22px 14px;text-align:center;background:#0b0d10;transition:.2s}.drop strong{display:block;margin-top:8px}.drop p{margin:4px 0;color:var(--muted);font-size:12px}.drop input{position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer}.drop.has{border-color:#8a6c3b;background:#12100b}
+    .files{display:grid;gap:7px;margin-top:10px}.file{display:flex;gap:10px;align-items:center;background:#0c0e11;border:1px solid #252a32;border-radius:12px;padding:10px}.file .name{min-width:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px}.file .size{color:var(--muted);font-size:11px}
+    .btn{width:100%;border:0;border-radius:14px;padding:14px 16px;font-weight:850;cursor:pointer}.btn.primary{background:linear-gradient(180deg,#ffd78e,#e7a94c);color:#171109;box-shadow:0 10px 30px #d69b3c22}.btn.secondary{background:#181c22;color:#e7e9ec;border:1px solid #303641}.btn:disabled{opacity:.4;cursor:not-allowed}
+    .status{display:none}.status.show{display:block}.statusline{display:flex;align-items:center;gap:9px;font-size:13px}.spinner{width:16px;height:16px;border:2px solid #ffffff2a;border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}.stage{color:var(--muted);margin-top:5px;font-size:12px}.error{color:#ff9d9d;white-space:pre-wrap;font-size:12px;margin-top:8px}
+    .previews{display:grid;gap:10px}.preview{border:1px solid #292f38;background:#0b0d10;border-radius:17px;overflow:hidden}.preview.failed{border-color:#5a2d2d}.visual{aspect-ratio:1/1;display:grid;place-items:center;background-color:#b9b9b9;background-image:linear-gradient(45deg,#d7d7d7 25%,transparent 25%),linear-gradient(-45deg,#d7d7d7 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#d7d7d7 75%),linear-gradient(-45deg,transparent 75%,#d7d7d7 75%);background-size:24px 24px;background-position:0 0,0 12px,12px -12px,-12px 0}.visual img,.visual video{width:100%;height:100%;object-fit:contain}.previewbody{padding:11px}.previewtop{display:flex;align-items:center;gap:8px}.previewname{font-size:12px;font-weight:750;min-width:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.meta{color:var(--muted);font-size:10px}.mini{border:1px solid #323842;background:#15191f;color:#d8dce2;border-radius:9px;padding:7px 9px;font-size:11px;font-weight:700}.mini.danger{color:#ff9d9d}.controls{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}.retry{margin-top:10px;padding-top:10px;border-top:1px solid #242932}.retry p{color:#ffaaaa;font-size:11px;margin:0 0 8px;line-height:1.35}.retryBtns{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+    select.text{appearance:none}.results{display:grid;gap:9px}.result{display:flex;align-items:center;gap:10px;border:1px solid #2c3c34;background:#0d1511;border-radius:14px;padding:12px}.result a{color:#7ce6b5;text-decoration:none;font-weight:800;font-size:13px;word-break:break-all}.result small{display:block;color:var(--muted);margin-top:2px}.hidden{display:none!important}.footer{text-align:center;color:#646b76;font-size:10px;margin-top:20px}
+  </style>
+</head>
+<body>
+<div class="app">
+  <header class="hero"><div class="mark">🔨</div><div><h1>Sticker Forge</h1><p>Green screen → transparent VP9 → Telegram sticker set</p></div><div class="online"><span class="dot"></span>online</div></header>
+  <div id="browserBanner" class="banner">Open Sticker Forge from its Telegram bot to forge or publish stickers. This browser view is useful for checking the interface, but Telegram authentication is only available inside the Mini App.</div>
 
-online
-Forge setup
-Sticker set name
-My Stickers
-Theme
-Default
-clean
-Degen
-dark & edgy
-Green-key strength
-Gentle
-protect green
-Auto
-recommended
-Strong
-dirty screen
-Clips
-🎬
-Tap to choose or record video(s)
-MP4 / MOV / WebM · up to 50 MB each
+  <section class="card" id="setupCard">
+    <h2>Forge setup</h2>
+    <label class="label" for="title">Sticker set name</label><input class="text" id="title" maxlength="64" value="My Stickers" />
+    <span class="label">Theme</span><div class="segments two" id="themeSeg"><button class="seg active" data-value="default">Default<small>clean</small></button><button class="seg" data-value="degen">Degen<small>dark & edgy</small></button></div>
+    <span class="label">Green-key strength</span><div class="segments" id="keySeg"><button class="seg" data-value="gentle">Gentle<small>protect green</small></button><button class="seg active" data-value="auto">Auto<small>recommended</small></button><button class="seg" data-value="strong">Strong<small>dirty screen</small></button></div>
+    <span class="label">Clips</span><div class="drop" id="drop"><div style="font-size:27px">🎬</div><strong>Tap to choose or record video(s)</strong><p>MP4 / MOV / WebM · up to 50 MB each</p><input id="files" type="file" accept="video/*,.mov,.m4v,.webm,.mkv,.avi" multiple /></div><div id="fileList" class="files"></div>
+    <div style="height:12px"></div><button id="forgeBtn" class="btn primary" disabled>Forge preview</button>
+  </section>
 
+  <section id="statusCard" class="card status"><div class="statusline"><div class="spinner"></div><strong id="statusTitle">Working…</strong></div><div id="statusStage" class="stage"></div><div id="statusError" class="error"></div></section>
 
-Forge preview
-Sticker Forge v1 · Telegram video sticker pipeline
+  <section id="previewCard" class="card hidden"><h2>Preview before publishing</h2><div id="previews" class="previews"></div><label class="label" for="targetSet">Publish target</label><select id="targetSet" class="text"><option value="">Create a new sticker set</option></select><div style="height:12px"></div><button id="publishBtn" class="btn primary">Publish selected stickers</button></section>
+
+  <section id="resultCard" class="card hidden"><h2>Forged ✅</h2><div id="results" class="results"></div><div style="height:12px"></div><button id="againBtn" class="btn secondary">Forge another set</button></section>
+  <div class="footer">Sticker Forge v1 · Telegram video sticker pipeline</div>
+</div>
+<script>
+(() => {
+  const tg = window.Telegram?.WebApp;
+  if (tg) { try { tg.ready(); tg.expand(); tg.setHeaderColor('#090a0c'); tg.setBackgroundColor('#090a0c'); } catch (_) {} }
+  const initData = tg?.initData || '';
+  const $ = id => document.getElementById(id);
+  const state = { theme:'default', keyMode:'auto', files:[], sourceJob:null, sourceToken:null, jobData:null, order:[] };
+  if (!initData) $('browserBanner').classList.add('show');
+
+  function segment(rootId, stateKey, savePref=false){
+    const root=$(rootId); root.querySelectorAll('.seg').forEach(btn=>btn.onclick=async()=>{
+      root.querySelectorAll('.seg').forEach(x=>x.classList.remove('active')); btn.classList.add('active'); state[stateKey]=btn.dataset.value;
+      if(savePref && initData){ const f=new FormData();f.append('init_data',initData);f.append('theme',state.theme);fetch('/api/prefs',{method:'POST',body:f}).catch(()=>{}); }
+    });
+  }
+  segment('themeSeg','theme',true); segment('keySeg','keyMode');
+
+  function fmt(bytes){ if(bytes<1024*1024)return (bytes/1024).toFixed(0)+' KB';return (bytes/1024/1024).toFixed(1)+' MB'; }
+  $('files').onchange=e=>{ state.files=[...e.target.files]; $('drop').classList.toggle('has',!!state.files.length); $('fileList').innerHTML=state.files.map(f=>`<div class="file"><span>🎞️</span><div class="name">${escapeHtml(f.name)}</div><div class="size">${fmt(f.size)}</div></div>`).join(''); updateForgeButton(); };
+  function updateForgeButton(){ $('forgeBtn').disabled=!initData||!state.files.length; }
+  function escapeHtml(v){return String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
+  function showStatus(title,stage='',err=''){ $('statusCard').classList.add('show'); $('statusTitle').textContent=title; $('statusStage').textContent=stage; $('statusError').textContent=err; }
+  function hideStatus(){ $('statusCard').classList.remove('show'); }
+  async function jsonFetch(url,opts){ const r=await fetch(url,opts); let d; try{d=await r.json();}catch{d={detail:await r.text()}} if(!r.ok)throw new Error(d.detail||`HTTP ${r.status}`); return d; }
+
+  async function loadPrefs(){ if(!initData)return; const f=new FormData();f.append('init_data',initData);try{const d=await jsonFetch('/api/prefs',{method:'POST',body:f});state.theme=d.theme||'default';document.querySelectorAll('#themeSeg .seg').forEach(b=>b.classList.toggle('active',b.dataset.value===state.theme));}catch(_){} }
+  async function loadSets(){ if(!initData)return; const f=new FormData();f.append('init_data',initData);try{const d=await jsonFetch('/api/sets',{method:'POST',body:f}); const sel=$('targetSet'); sel.innerHTML='<option value="">Create a new sticker set</option>'; (d.sets||[]).forEach(s=>{const o=document.createElement('option');o.value=s.name;o.textContent=`Add to ${s.title} (${s.count||0}/120)`;sel.appendChild(o);});}catch(_){} }
+
+  $('forgeBtn').onclick=async()=>{
+    $('previewCard').classList.add('hidden');$('resultCard').classList.add('hidden');showStatus('Preparing forge…','Uploading clips');
+    const f=new FormData();f.append('init_data',initData);f.append('title',$('title').value||'My Stickers');f.append('theme',state.theme);f.append('key_mode',state.keyMode);state.files.forEach(x=>f.append('files',x,x.name));
+    try{const d=await jsonFetch('/api/forge',{method:'POST',body:f});state.sourceJob=d.job_id;state.sourceToken=d.job_token;await poll(d.job_id,d.job_token,'preview');}catch(e){showStatus('Forge failed','',e.message);}
+  };
+
+  async function poll(id,token,kind){
+    for(let i=0;i<300;i++){
+      let d; try{d=await jsonFetch(`/api/jobs/${encodeURIComponent(id)}?token=${encodeURIComponent(token)}`);}catch(e){showStatus('Job check failed','',e.message);return;}
+      showStatus(kind==='preview'?'Forging preview…':'Publishing…',d.stage||d.status||'Working');
+      if(d.status==='error'){showStatus('Job failed',d.stage||'',d.error||'Unknown error');return;}
+      if(d.status==='done'){
+        hideStatus(); if(kind==='preview'){state.jobData=d;state.order=(d.clips||[]).filter(c=>c.status==='ok').map(c=>c.idx);renderPreview();await loadSets();}else{renderResults(d);} return;
+      }
+      await new Promise(r=>setTimeout(r,1100));
+    }
+    showStatus('Still working','This job is taking unusually long.');
+  }
+
+  function renderPreview(){
+    const clips=state.jobData?.clips||[]; const okMap=new Map(clips.filter(c=>c.status==='ok').map(c=>[c.idx,c])); const failed=clips.filter(c=>c.status!=='ok');
+    $('previews').innerHTML='';
+    state.order.forEach((idx,pos)=>{const c=okMap.get(idx);if(!c)return; const el=document.createElement('div');el.className='preview';el.innerHTML=`<div class="visual"><img src="${c.thumbnail}" alt="Transparent preview"></div><div class="previewbody"><div class="previewtop"><div class="previewname">${escapeHtml(c.name)}</div><div class="meta">${c.width}×${c.height} · ${c.size_kb} KB</div></div><div class="controls"><button class="mini play">▶ Preview motion</button><button class="mini up" ${pos===0?'disabled':''}>↑</button><button class="mini down" ${pos===state.order.length-1?'disabled':''}>↓</button><button class="mini danger remove">✕ Drop</button></div></div>`;
+      el.querySelector('.play').onclick=()=>{const v=el.querySelector('.visual');v.innerHTML=`<video src="${c.preview}" autoplay loop muted playsinline></video>`;};
+      el.querySelector('.up').onclick=()=>move(pos,-1); el.querySelector('.down').onclick=()=>move(pos,1); el.querySelector('.remove').onclick=()=>{state.order.splice(pos,1);renderPreview();}; $('previews').appendChild(el);
+    });
+    failed.forEach(c=>{const el=document.createElement('div');el.className='preview failed';el.innerHTML=`<div class="previewbody"><div class="previewtop"><div class="previewname">⚠️ ${escapeHtml(c.name)}</div></div><div class="retry"><p>${escapeHtml(c.error||'Encoding failed')}</p><div class="retryBtns"><button class="mini" data-mode="gentle">Gentle</button><button class="mini" data-mode="auto">Auto</button><button class="mini" data-mode="strong">Strong</button></div></div></div>`;el.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>retry(c.idx,b.dataset.mode));$('previews').appendChild(el);});
+    $('previewCard').classList.remove('hidden'); $('publishBtn').disabled=!state.order.length;
+  }
+  function move(pos,delta){const n=pos+delta;if(n<0||n>=state.order.length)return;[state.order[pos],state.order[n]]=[state.order[n],state.order[pos]];renderPreview();}
+  async function retry(idx,mode){showStatus('Retrying clip…',`${mode} key`);const f=new FormData();f.append('init_data',initData);f.append('job_id',state.sourceJob);f.append('idx',String(idx));f.append('key_mode',mode);try{await jsonFetch('/api/retry',{method:'POST',body:f});const d=await jsonFetch(`/api/jobs/${encodeURIComponent(state.sourceJob)}?token=${encodeURIComponent(state.sourceToken)}`);state.jobData=d;if((d.clips||[]).find(c=>c.idx===idx)?.status==='ok'&&!state.order.includes(idx))state.order.push(idx);hideStatus();renderPreview();}catch(e){showStatus('Retry failed','',e.message);}}
+
+  $('publishBtn').onclick=async()=>{showStatus('Publishing…','Sending stickers to Telegram');const f=new FormData();f.append('init_data',initData);f.append('job_id',state.sourceJob);f.append('order',JSON.stringify(state.order));f.append('set_name',$('targetSet').value||'');try{const d=await jsonFetch('/api/publish',{method:'POST',body:f});await poll(d.job_id,d.job_token,'publish');}catch(e){showStatus('Publish failed','',e.message);}};
+  function renderResults(d){$('previewCard').classList.add('hidden');$('resultCard').classList.remove('hidden');$('results').innerHTML=(d.links||[]).map(x=>`<div class="result"><div>✅</div><div><a href="${x.link}" target="_blank">${escapeHtml(x.title||'Open sticker set')}</a><small>${escapeHtml(x.name||'')}</small></div></div>`).join('')||'<div class="error">Publishing finished, but no set links were returned.</div>';try{tg?.HapticFeedback?.notificationOccurred('success');}catch(_){} }
+  $('againBtn').onclick=()=>{state.files=[];state.sourceJob=null;state.sourceToken=null;state.jobData=null;state.order=[];$('files').value='';$('fileList').innerHTML='';$('drop').classList.remove('has');$('resultCard').classList.add('hidden');$('previewCard').classList.add('hidden');updateForgeButton();window.scrollTo({top:0,behavior:'smooth'});};
+  loadPrefs(); loadSets(); updateForgeButton();
+})();
+</script>
+</body>
+</html>
