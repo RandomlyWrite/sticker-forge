@@ -19,8 +19,55 @@
     .files{display:grid;gap:7px;margin-top:10px}.file{display:flex;gap:10px;align-items:center;background:#0c0e11;border:1px solid #252a32;border-radius:12px;padding:10px}.file .name{min-width:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px}.file .size{color:var(--muted);font-size:11px}
     .btn{width:100%;border:0;border-radius:14px;padding:14px 16px;font-weight:850;cursor:pointer}.btn.primary{background:linear-gradient(180deg,#ffd78e,#e7a94c);color:#171109;box-shadow:0 10px 30px #d69b3c22}.btn.secondary{background:#181c22;color:#e7e9ec;border:1px solid #303641}.btn:disabled{opacity:.4;cursor:not-allowed}
     .status{display:none}.status.show{display:block}.statusline{display:flex;align-items:center;gap:9px;font-size:13px}.spinner{width:16px;height:16px;border:2px solid #ffffff2a;border-top-color:var(--accent);border-radius:50%;animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}.stage{color:var(--muted);margin-top:5px;font-size:12px}.error{color:#ff9d9d;white-space:pre-wrap;font-size:12px;margin-top:8px}
-    .previews{display:grid;gap:10px}.preview{border:1px solid #292f38;background:#0b0d10;border-radius:17px;overflow:hidden}.preview.failed{border-color:#5a2d2d}.visual{aspect-ratio:1/1;display:grid;place-items:center;background-color:#b9b9b9;background-image:linear-gradient(45deg,#d7d7d7 25%,transparent 25%),linear-gradient(-45deg,#d7d7d7 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#d7d7d7 75%),linear-gradient(-45deg,transparent 75%,#d7d7d7 75%);background-size:24px 24px;background-position:0 0,0 12px,12px -12px,-12px 0}.visual img,.visual video{width:100%;height:100%;object-fit:contain}.previewbody{padding:11px}.previewtop{display:flex;align-items:center;gap:8px}.previewname{font-size:12px;font-weight:750;min-width:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.meta{color:var(--muted);font-size:10px}.mini{border:1px solid #323842;background:#15191f;color:#d8dce2;border-radius:9px;padding:7px 9px;font-size:11px;font-weight:700}.mini.danger{color:#ff9d9d}.controls{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}.retry{margin-top:10px;padding-top:10px;border-top:1px solid #242932}.retry p{color:#ffaaaa;font-size:11px;margin:0 0 8px;line-height:1.35}.retryBtns{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+
+    /* Telegram Preview Simulator toggle */
+    .simSeg{grid-template-columns:repeat(3,1fr);margin-bottom:12px}
+    .chatBgSeg{grid-template-columns:repeat(2,1fr);margin-bottom:12px;display:none}
+    .chatBgSeg.show{display:grid}
+
+    .previews{display:grid;gap:10px}.preview{border:1px solid #292f38;background:#0b0d10;border-radius:17px;overflow:hidden}.preview.failed{border-color:#5a2d2d}
+    .visual{aspect-ratio:1/1;display:grid;place-items:center;background-color:#b9b9b9;background-image:linear-gradient(45deg,#d7d7d7 25%,transparent 25%),linear-gradient(-45deg,#d7d7d7 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#d7d7d7 75%),linear-gradient(-45deg,transparent 75%,#d7d7d7 75%);background-size:24px 24px;background-position:0 0,0 12px,12px -12px,-12px 0}
+    .visual img,.visual video{width:100%;height:100%;object-fit:contain}
+    .previewbody{padding:11px}.previewtop{display:flex;align-items:center;gap:8px}
+    .previewname{font-size:12px;font-weight:750;min-width:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;border-radius:8px;padding:2px 4px}
+    .previewname:focus{background:#181c22;outline:1px solid #3a3f4a;white-space:normal;overflow:visible}
+    .meta{color:var(--muted);font-size:10px}.mini{border:1px solid #323842;background:#15191f;color:#d8dce2;border-radius:9px;padding:7px 9px;font-size:11px;font-weight:700}.mini.danger{color:#ff9d9d}.controls{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}.retry{margin-top:10px;padding-top:10px;border-top:1px solid #242932}.retry p{color:#ffaaaa;font-size:11px;margin:0 0 8px;line-height:1.35}.retryBtns{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+
+    /* Export diagnostics */
+    .diag{display:flex;flex-wrap:wrap;gap:5px;margin-top:9px}
+    .chip{font-size:10px;font-weight:700;border-radius:8px;padding:4px 7px;border:1px solid #2c3c34;color:#7ce6b5;background:#0d1511}
+    .chip.bad{border-color:#5a2d2d;color:#ff9d9d;background:#180f0f}
+
+    /* Emoji picker */
+    .emojirow{display:flex;flex-wrap:wrap;gap:5px;margin-top:9px}
+    .emojibtn{width:32px;height:32px;border-radius:9px;border:1px solid #2c313a;background:#0d0f12;font-size:15px;display:grid;place-items:center;padding:0}
+    .emojibtn.active{border-color:#d6a44e;background:#241d10;box-shadow:0 0 0 1px #d6a44e55}
+
+    /* Loop Studio */
+    .loopstudio{margin-top:10px;padding-top:10px;border-top:1px solid #242932}
+    .loopheader{display:flex;align-items:center;justify-content:space-between;font-size:12px;font-weight:750;color:#c9cdd4}
+    .loopbody{margin-top:9px}.loopbody.hidden{display:none}
+    .looprow{margin-bottom:9px}.looprow label{display:flex;justify-content:space-between;color:var(--muted);font-size:11px;margin-bottom:4px}
+    .looprow input[type=range]{width:100%;accent-color:var(--accent)}
+    .loopdur{font-size:11px;color:var(--muted);margin-bottom:9px}.loopdur strong{color:var(--text)}
+    .loopwarn{font-size:10px;color:#f6d795;margin:-4px 0 9px}
+
     select.text{appearance:none}.results{display:grid;gap:9px}.result{display:flex;align-items:center;gap:10px;border:1px solid #2c3c34;background:#0d1511;border-radius:14px;padding:12px}.result a{color:#7ce6b5;text-decoration:none;font-weight:800;font-size:13px;word-break:break-all}.result small{display:block;color:var(--muted);margin-top:2px}.hidden{display:none!important}.footer{text-align:center;color:#646b76;font-size:10px;margin-top:20px}
+
+    /* Chat-view mockup (Telegram Preview Simulator) */
+    .previews.sim-chat .preview{background:transparent;border:0;box-shadow:none}
+    .previews.sim-chat .visual{aspect-ratio:auto;background:none;width:160px;margin:0 auto;padding:14px 0 4px}
+    .previews.sim-chat .visual img,.previews.sim-chat .visual video{width:100%;height:auto;object-fit:contain}
+    .previews.sim-chat{background:#0e1621;border-radius:16px;padding:14px}
+    .previews.sim-chat.light{background:#e6ebf0}
+    .previews.sim-chat .previewbody{max-width:220px;margin:0 auto;text-align:center}
+    .previews.sim-chat.light .previewname,.previews.sim-chat.light .meta{color:#222}
+
+    /* Tray-view mockup (sticker picker grid) */
+    .previews.sim-tray{display:grid;grid-template-columns:repeat(6,1fr);gap:6px;background:#151a21;border-radius:16px;padding:10px}
+    .previews.sim-tray .preview{border-radius:10px}
+    .previews.sim-tray .visual{aspect-ratio:1/1}
+    .previews.sim-tray .previewbody,.previews.sim-tray .diag,.previews.sim-tray .emojirow,.previews.sim-tray .loopstudio,.previews.sim-tray .controls{display:none}
   </style>
 </head>
 <body>
@@ -39,7 +86,22 @@
 
   <section id="statusCard" class="card status"><div class="statusline"><div class="spinner"></div><strong id="statusTitle">Working…</strong></div><div id="statusStage" class="stage"></div><div id="statusError" class="error"></div></section>
 
-  <section id="previewCard" class="card hidden"><h2>Preview before publishing</h2><div id="previews" class="previews"></div><label class="label" for="targetSet">Publish target</label><select id="targetSet" class="text"><option value="">Create a new sticker set</option></select><div style="height:12px"></div><button id="publishBtn" class="btn primary">Publish selected stickers</button></section>
+  <section id="previewCard" class="card hidden">
+    <h2>Preview before publishing</h2>
+    <span class="label">View as</span>
+    <div class="segments simSeg" id="simSeg">
+      <button class="seg active" data-value="canvas">Canvas<small>editing</small></button>
+      <button class="seg" data-value="chat">Chat<small>real size</small></button>
+      <button class="seg" data-value="tray">Tray<small>sticker picker</small></button>
+    </div>
+    <div class="segments chatBgSeg" id="chatBgSeg">
+      <button class="seg active" data-value="dark">Dark chat</button>
+      <button class="seg" data-value="light">Light chat</button>
+    </div>
+    <div id="previews" class="previews"></div>
+    <label class="label" for="targetSet">Publish target</label><select id="targetSet" class="text"><option value="">Create a new sticker set</option></select>
+    <div style="height:12px"></div><button id="publishBtn" class="btn primary">Publish selected stickers</button>
+  </section>
 
   <section id="resultCard" class="card hidden"><h2>Forged ✅</h2><div id="results" class="results"></div><div style="height:12px"></div><button id="againBtn" class="btn secondary">Forge another set</button></section>
   <div class="footer">Sticker Forge v1 · Telegram video sticker pipeline</div>
@@ -50,7 +112,14 @@
   if (tg) { try { tg.ready(); tg.expand(); tg.setHeaderColor('#090a0c'); tg.setBackgroundColor('#090a0c'); } catch (_) {} }
   const initData = tg?.initData || '';
   const $ = id => document.getElementById(id);
-  const state = { theme:'default', keyMode:'auto', files:[], sourceJob:null, sourceToken:null, jobData:null, order:[] };
+  const EMOJI_SET = ['🔥','😂','👍','💀','😭','🎉','💊','👀','❤️','😳','🤝','✨'];
+  const state = {
+    theme:'default', keyMode:'auto', files:[], sourceJob:null, sourceToken:null, jobData:null, order:[],
+    simMode:'canvas', chatBg:'dark',
+    names:{},   // idx -> edited display name (cosmetic, not sent to Telegram)
+    emojis:{},  // idx -> single emoji, sent on publish
+    edits:{},   // idx -> { loop_start, loop_end, loop_mode } — sent on first forge AND on trim retries
+  };
   if (!initData) $('browserBanner').classList.add('show');
 
   function segment(rootId, stateKey, savePref=false){
@@ -61,9 +130,25 @@
   }
   segment('themeSeg','theme',true); segment('keySeg','keyMode');
 
+  // Telegram Preview Simulator toggle — pure frontend, no network calls.
+  $('simSeg').querySelectorAll('.seg').forEach(btn=>btn.onclick=()=>{
+    $('simSeg').querySelectorAll('.seg').forEach(x=>x.classList.remove('active')); btn.classList.add('active');
+    state.simMode=btn.dataset.value;
+    $('chatBgSeg').classList.toggle('show', state.simMode==='chat');
+    applySimMode();
+  });
+  $('chatBgSeg').querySelectorAll('.seg').forEach(btn=>btn.onclick=()=>{
+    $('chatBgSeg').querySelectorAll('.seg').forEach(x=>x.classList.remove('active')); btn.classList.add('active');
+    state.chatBg=btn.dataset.value; applySimMode();
+  });
+  function applySimMode(){
+    const el=$('previews');
+    el.classList.remove('sim-chat','sim-tray','light');
+    if(state.simMode==='chat'){ el.classList.add('sim-chat'); if(state.chatBg==='light') el.classList.add('light'); }
+    else if(state.simMode==='tray'){ el.classList.add('sim-tray'); }
+  }
+
   function fmt(bytes){ if(bytes<1024*1024)return (bytes/1024).toFixed(0)+' KB';return (bytes/1024/1024).toFixed(1)+' MB'; }
-  $('files').onchange=e=>{ state.files=[...e.target.files]; $('drop').classList.toggle('has',!!state.files.length); $('fileList').innerHTML=state.files.map(f=>`<div class="file"><span>🎞️</span><div class="name">${escapeHtml(f.name)}</div><div class="size">${fmt(f.size)}</div></div>`).join(''); updateForgeButton(); };
-  function updateForgeButton(){ $('forgeBtn').disabled=!initData||!state.files.length; }
   function escapeHtml(v){return String(v??'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
   function showStatus(title,stage='',err=''){ $('statusCard').classList.add('show'); $('statusTitle').textContent=title; $('statusStage').textContent=stage; $('statusError').textContent=err; }
   function hideStatus(){ $('statusCard').classList.remove('show'); }
@@ -72,8 +157,12 @@
   async function loadPrefs(){ if(!initData)return; const f=new FormData();f.append('init_data',initData);try{const d=await jsonFetch('/api/prefs',{method:'POST',body:f});state.theme=d.theme||'default';document.querySelectorAll('#themeSeg .seg').forEach(b=>b.classList.toggle('active',b.dataset.value===state.theme));}catch(_){} }
   async function loadSets(){ if(!initData)return; const f=new FormData();f.append('init_data',initData);try{const d=await jsonFetch('/api/sets',{method:'POST',body:f}); const sel=$('targetSet'); sel.innerHTML='<option value="">Create a new sticker set</option>'; (d.sets||[]).forEach(s=>{const o=document.createElement('option');o.value=s.name;o.textContent=`Add to ${s.title} (${s.count||0}/120)`;sel.appendChild(o);});}catch(_){} }
 
+  $('files').onchange=e=>{ state.files=[...e.target.files]; $('drop').classList.toggle('has',!!state.files.length); $('fileList').innerHTML=state.files.map(f=>`<div class="file"><span>🎞️</span><div class="name">${escapeHtml(f.name)}</div><div class="size">${fmt(f.size)}</div></div>`).join(''); updateForgeButton(); };
+  function updateForgeButton(){ $('forgeBtn').disabled=!initData||!state.files.length; }
+
   $('forgeBtn').onclick=async()=>{
     $('previewCard').classList.add('hidden');$('resultCard').classList.add('hidden');showStatus('Preparing forge…','Uploading clips');
+    state.names={};state.emojis={};state.edits={};
     const f=new FormData();f.append('init_data',initData);f.append('title',$('title').value||'My Stickers');f.append('theme',state.theme);f.append('key_mode',state.keyMode);state.files.forEach(x=>f.append('files',x,x.name));
     try{const d=await jsonFetch('/api/forge',{method:'POST',body:f});state.sourceJob=d.job_id;state.sourceToken=d.job_token;await poll(d.job_id,d.job_token,'preview');}catch(e){showStatus('Forge failed','',e.message);}
   };
@@ -91,22 +180,113 @@
     showStatus('Still working','This job is taking unusually long.');
   }
 
+  function diagChips(c){
+    // Export Diagnostics — objective facts, not a made-up quality score.
+    const chips=[`✓ ${c.size_kb} KB`];
+    if(c.duration_s!=null) chips.push(`✓ ${c.duration_s}s`);
+    if(c.fps!=null) chips.push(`✓ ${c.fps} fps`);
+    chips.push(c.alpha_ok===false ? '✕ Transparency weak' : '✓ Transparency');
+    chips.push(c.telegram_ready===false ? '✕ Not Telegram-ready' : '✓ Telegram ready');
+    return chips.map(t=>`<span class="chip${t.startsWith('✕')?' bad':''}">${t}</span>`).join('');
+  }
+
+  function emojiRow(idx){
+    return `<div class="emojirow" data-idx="${idx}">${EMOJI_SET.map(e=>`<button class="emojibtn${state.emojis[idx]===e?' active':''}" data-e="${e}">${e}</button>`).join('')}</div>`;
+  }
+
+  function loopStudioBlock(c, idx){
+    const dur = c.source_duration || 3.0;
+    const existing = state.edits[idx] || { loop_start:0, loop_end:Math.min(dur,3.0), loop_mode:'trim' };
+    state.edits[idx]=existing;
+    return `
+      <div class="loopstudio" data-idx="${idx}">
+        <div class="loopheader"><span>✂️ Loop Studio</span><button class="mini loopToggle">Adjust</button></div>
+        <div class="loopbody hidden">
+          <div class="looprow"><label>Start <span class="startVal">${existing.loop_start.toFixed(1)}s</span></label>
+            <input type="range" class="loopStart" min="0" max="${dur.toFixed(2)}" step="0.1" value="${existing.loop_start}"></div>
+          <div class="looprow"><label>End <span class="endVal">${existing.loop_end.toFixed(1)}s</span></label>
+            <input type="range" class="loopEnd" min="0" max="${dur.toFixed(2)}" step="0.1" value="${existing.loop_end}"></div>
+          <div class="loopdur">Selection: <strong class="durOut">${(existing.loop_end-existing.loop_start).toFixed(1)}s</strong></div>
+          <div class="loopwarn hidden">⚠️ Ping-pong doubles this — it'll auto-speed-up to fit 3s.</div>
+          <span class="label">Loop mode</span>
+          <div class="segments loopModeSeg">
+            <button class="seg${existing.loop_mode==='trim'?' active':''}" data-value="trim">Trim<small>as-is</small></button>
+            <button class="seg${existing.loop_mode==='ping_pong'?' active':''}" data-value="ping_pong">Ping-Pong<small>fwd+rev</small></button>
+            <button class="seg${existing.loop_mode==='speed_fit'?' active':''}" data-value="speed_fit">Speed Fit<small>auto-fit</small></button>
+          </div>
+          <div style="height:9px"></div>
+          <button class="mini applyLoop" style="width:100%">Apply trim &amp; re-forge clip</button>
+        </div>
+      </div>`;
+  }
+
+  function wireLoopStudio(el, idx){
+    const block=el.querySelector('.loopstudio'); if(!block) return;
+    const body=block.querySelector('.loopbody');
+    block.querySelector('.loopToggle').onclick=()=>body.classList.toggle('hidden');
+    const startR=block.querySelector('.loopStart'), endR=block.querySelector('.loopEnd');
+    const startVal=block.querySelector('.startVal'), endVal=block.querySelector('.endVal'), durOut=block.querySelector('.durOut');
+    const warn=block.querySelector('.loopwarn');
+    function sync(){
+      let s=parseFloat(startR.value), e=parseFloat(endR.value);
+      if(e<=s){ e=Math.min(parseFloat(endR.max), s+0.1); endR.value=e; } // guard: start > end
+      const edit=state.edits[idx]; edit.loop_start=s; edit.loop_end=e;
+      startVal.textContent=s.toFixed(1)+'s'; endVal.textContent=e.toFixed(1)+'s'; durOut.textContent=(e-s).toFixed(1)+'s';
+      const isPingPong = edit.loop_mode==='ping_pong';
+      warn.classList.toggle('hidden', !(isPingPong && (e-s)*2 > 3.05));
+    }
+    startR.oninput=sync; endR.oninput=sync;
+    block.querySelectorAll('.loopModeSeg .seg').forEach(btn=>btn.onclick=()=>{
+      block.querySelectorAll('.loopModeSeg .seg').forEach(x=>x.classList.remove('active')); btn.classList.add('active');
+      state.edits[idx].loop_mode=btn.dataset.value; sync();
+    });
+    block.querySelector('.applyLoop').onclick=async()=>{
+      const edit=state.edits[idx];
+      showStatus('Applying trim…', edit.loop_mode);
+      const f=new FormData();
+      f.append('init_data',initData); f.append('job_id',state.sourceJob); f.append('idx',String(idx));
+      f.append('loop_start',String(edit.loop_start)); f.append('loop_end',String(edit.loop_end)); f.append('loop_mode',edit.loop_mode);
+      try{
+        await jsonFetch('/api/retry',{method:'POST',body:f});
+        const d=await jsonFetch(`/api/jobs/${encodeURIComponent(state.sourceJob)}?token=${encodeURIComponent(state.sourceToken)}`);
+        state.jobData=d; hideStatus(); renderPreview();
+      }catch(e){ showStatus('Trim failed','',e.message); }
+    };
+  }
+
   function renderPreview(){
     const clips=state.jobData?.clips||[]; const okMap=new Map(clips.filter(c=>c.status==='ok').map(c=>[c.idx,c])); const failed=clips.filter(c=>c.status!=='ok');
     $('previews').innerHTML='';
-    state.order.forEach((idx,pos)=>{const c=okMap.get(idx);if(!c)return; const el=document.createElement('div');el.className='preview';el.innerHTML=`<div class="visual"><img src="${c.thumbnail}" alt="Transparent preview"></div><div class="previewbody"><div class="previewtop"><div class="previewname">${escapeHtml(c.name)}</div><div class="meta">${c.width}×${c.height} · ${c.size_kb} KB</div></div><div class="controls"><button class="mini play">▶ Preview motion</button><button class="mini up" ${pos===0?'disabled':''}>↑</button><button class="mini down" ${pos===state.order.length-1?'disabled':''}>↓</button><button class="mini danger remove">✕ Drop</button></div></div>`;
+    state.order.forEach((idx,pos)=>{const c=okMap.get(idx);if(!c)return;
+      if(!(idx in state.names)) state.names[idx]=c.name;
+      const el=document.createElement('div');el.className='preview';
+      el.innerHTML=`<div class="visual"><img src="${c.thumbnail}" alt="Transparent preview"></div><div class="previewbody"><div class="previewtop"><div class="previewname" contenteditable="true" spellcheck="false">${escapeHtml(state.names[idx])}</div><div class="meta">${c.width}×${c.height}</div></div>${diagChips(c) ? `<div class="diag">${diagChips(c)}</div>` : ''}${emojiRow(idx)}<div class="controls"><button class="mini play">▶ Preview motion</button><button class="mini up" ${pos===0?'disabled':''}>↑</button><button class="mini down" ${pos===state.order.length-1?'disabled':''}>↓</button><button class="mini danger remove">✕ Drop</button></div>${loopStudioBlock(c, idx)}</div>`;
       el.querySelector('.play').onclick=()=>{const v=el.querySelector('.visual');v.innerHTML=`<video src="${c.preview}" autoplay loop muted playsinline></video>`;};
-      el.querySelector('.up').onclick=()=>move(pos,-1); el.querySelector('.down').onclick=()=>move(pos,1); el.querySelector('.remove').onclick=()=>{state.order.splice(pos,1);renderPreview();}; $('previews').appendChild(el);
+      el.querySelector('.up').onclick=()=>move(pos,-1); el.querySelector('.down').onclick=()=>move(pos,1); el.querySelector('.remove').onclick=()=>{state.order.splice(pos,1);renderPreview();};
+      el.querySelector('.previewname').onblur=e=>{state.names[idx]=e.target.textContent.trim()||c.name;};
+      el.querySelectorAll('.emojibtn').forEach(b=>b.onclick=()=>{
+        state.emojis[idx] = state.emojis[idx]===b.dataset.e ? undefined : b.dataset.e;
+        el.querySelectorAll('.emojibtn').forEach(x=>x.classList.toggle('active', x.dataset.e===state.emojis[idx]));
+      });
+      wireLoopStudio(el, idx);
+      $('previews').appendChild(el);
     });
     failed.forEach(c=>{const el=document.createElement('div');el.className='preview failed';el.innerHTML=`<div class="previewbody"><div class="previewtop"><div class="previewname">⚠️ ${escapeHtml(c.name)}</div></div><div class="retry"><p>${escapeHtml(c.error||'Encoding failed')}</p><div class="retryBtns"><button class="mini" data-mode="gentle">Gentle</button><button class="mini" data-mode="auto">Auto</button><button class="mini" data-mode="strong">Strong</button></div></div></div>`;el.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>retry(c.idx,b.dataset.mode));$('previews').appendChild(el);});
     $('previewCard').classList.remove('hidden'); $('publishBtn').disabled=!state.order.length;
+    applySimMode();
   }
   function move(pos,delta){const n=pos+delta;if(n<0||n>=state.order.length)return;[state.order[pos],state.order[n]]=[state.order[n],state.order[pos]];renderPreview();}
   async function retry(idx,mode){showStatus('Retrying clip…',`${mode} key`);const f=new FormData();f.append('init_data',initData);f.append('job_id',state.sourceJob);f.append('idx',String(idx));f.append('key_mode',mode);try{await jsonFetch('/api/retry',{method:'POST',body:f});const d=await jsonFetch(`/api/jobs/${encodeURIComponent(state.sourceJob)}?token=${encodeURIComponent(state.sourceToken)}`);state.jobData=d;if((d.clips||[]).find(c=>c.idx===idx)?.status==='ok'&&!state.order.includes(idx))state.order.push(idx);hideStatus();renderPreview();}catch(e){showStatus('Retry failed','',e.message);}}
 
-  $('publishBtn').onclick=async()=>{showStatus('Publishing…','Sending stickers to Telegram');const f=new FormData();f.append('init_data',initData);f.append('job_id',state.sourceJob);f.append('order',JSON.stringify(state.order));f.append('set_name',$('targetSet').value||'');try{const d=await jsonFetch('/api/publish',{method:'POST',body:f});await poll(d.job_id,d.job_token,'publish');}catch(e){showStatus('Publish failed','',e.message);}};
+  $('publishBtn').onclick=async()=>{
+    showStatus('Publishing…','Sending stickers to Telegram');
+    const f=new FormData();f.append('init_data',initData);f.append('job_id',state.sourceJob);f.append('order',JSON.stringify(state.order));f.append('set_name',$('targetSet').value||'');
+    const emojiPayload={}; state.order.forEach(idx=>{ if(state.emojis[idx]) emojiPayload[idx]=state.emojis[idx]; });
+    if(Object.keys(emojiPayload).length) f.append('emojis', JSON.stringify(emojiPayload));
+    try{const d=await jsonFetch('/api/publish',{method:'POST',body:f});await poll(d.job_id,d.job_token,'publish');}catch(e){showStatus('Publish failed','',e.message);}
+  };
   function renderResults(d){$('previewCard').classList.add('hidden');$('resultCard').classList.remove('hidden');$('results').innerHTML=(d.links||[]).map(x=>`<div class="result"><div>✅</div><div><a href="${x.link}" target="_blank">${escapeHtml(x.title||'Open sticker set')}</a><small>${escapeHtml(x.name||'')}</small></div></div>`).join('')||'<div class="error">Publishing finished, but no set links were returned.</div>';try{tg?.HapticFeedback?.notificationOccurred('success');}catch(_){} }
-  $('againBtn').onclick=()=>{state.files=[];state.sourceJob=null;state.sourceToken=null;state.jobData=null;state.order=[];$('files').value='';$('fileList').innerHTML='';$('drop').classList.remove('has');$('resultCard').classList.add('hidden');$('previewCard').classList.add('hidden');updateForgeButton();window.scrollTo({top:0,behavior:'smooth'});};
+  $('againBtn').onclick=()=>{state.files=[];state.sourceJob=null;state.sourceToken=null;state.jobData=null;state.order=[];state.names={};state.emojis={};state.edits={};$('files').value='';$('fileList').innerHTML='';$('drop').classList.remove('has');$('resultCard').classList.add('hidden');$('previewCard').classList.add('hidden');updateForgeButton();window.scrollTo({top:0,behavior:'smooth'});};
   loadPrefs(); loadSets(); updateForgeButton();
 })();
 </script>
