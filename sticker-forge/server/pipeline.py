@@ -10,7 +10,7 @@ from typing import Optional
 import requests
 
 from sticker_forge.telegram_uploader import SET_CAP, StickerUploader
-from sticker_forge.video_processor import extract_alpha_preview_png, process_green_screen_to_sticker, validate_telegram_webm
+from sticker_forge.video_processor import extract_alpha_preview_png, inspect_video, process_green_screen_to_sticker, validate_telegram_webm
 
 from . import config, prefs
 from .jobs import STORE, Job
@@ -91,6 +91,7 @@ def encode_preview(
     theme: str,
     title: str,
     key_mode: str = "auto",
+    clip_edits: dict[int, dict] | None = None,
     job: Job | None = None,
 ) -> dict:
     if job is None:
@@ -136,12 +137,20 @@ def encode_preview(
             clips.append(clip)
             job.clips = clips
             try:
+                edit = (clip_edits or {}).get(idx, {})
+                try:
+                    src_duration = inspect_video(source)["duration"]
+                except Exception:
+                    src_duration = 0.0
                 process_green_screen_to_sticker(
                     str(source),
                     str(output),
                     overwrite=True,
                     key_mode=key_mode,
                     auto_crop=config.AUTO_CROP,
+                    clip_start=edit.get("loop_start", 0.0),
+                    clip_end=edit.get("loop_end"),
+                    loop_mode=edit.get("loop_mode", "trim"),
                 )
                 info = validate_telegram_webm(output)
                 extract_alpha_preview_png(output, thumbnail)
@@ -154,6 +163,16 @@ def encode_preview(
                     "width": info["width"],
                     "height": info["height"],
                     "alpha_fraction": round(float(info["alpha"]["transparent_fraction"]), 4),
+                    "duration_s": round(float(info["duration"]), 2),
+                    "fps": round(float(info["fps"]), 1),
+                    "alpha_ok": float(info["alpha"]["transparent_fraction"]) >= 0.005,
+                    "telegram_ready": True,
+                    "source_duration": round(float(src_duration), 2),
+                    "_loop_edit": {
+                        "loop_start": edit.get("loop_start", 0.0),
+                        "loop_end": edit.get("loop_end"),
+                        "loop_mode": edit.get("loop_mode", "trim"),
+                    },
                 })
             except Exception as exc:
                 log.exception("Preview encode failed for clip %s", idx)
@@ -184,7 +203,14 @@ def encode_preview(
     }
 
 
-def retry_preview_clip(job: Job, idx: int, key_mode: str | None = None) -> dict:
+def retry_preview_clip(
+    job: Job,
+    idx: int,
+    key_mode: str | None = None,
+    loop_start: float | None = None,
+    loop_end: float | None = None,
+    loop_mode: str | None = None,
+) -> dict:
     if job.phase != "preview":
         raise ValueError("Only preview jobs can be retried")
     if idx < 0 or idx >= len(job.clips):
@@ -197,6 +223,19 @@ def retry_preview_clip(job: Job, idx: int, key_mode: str | None = None) -> dict:
     if not source.exists():
         raise FileNotFoundError("Original clip has already been cleaned up")
     mode = _select_key_mode(key_mode or job.result.get("key_mode"))
+    # Loop edits persist per-clip: an explicit arg overrides the stored edit,
+    # otherwise reuse whatever was applied last time (reorder/retry must never
+    # silently drop or cross-contaminate a clip's trim settings).
+    stored = clip.get("_loop_edit", {})
+    edit = {
+        "loop_start": loop_start if loop_start is not None else stored.get("loop_start", 0.0),
+        "loop_end": loop_end if loop_end is not None else stored.get("loop_end"),
+        "loop_mode": loop_mode if loop_mode is not None else stored.get("loop_mode", "trim"),
+    }
+    try:
+        src_duration = inspect_video(source)["duration"]
+    except Exception:
+        src_duration = 0.0
     clip.update({"status": "encoding", "error": None, "preview": None})
     job.status = "running"
     job.stage = f"retrying clip {idx + 1}"
@@ -204,6 +243,7 @@ def retry_preview_clip(job: Job, idx: int, key_mode: str | None = None) -> dict:
     try:
         process_green_screen_to_sticker(
             str(source), str(output), overwrite=True, key_mode=mode, auto_crop=config.AUTO_CROP,
+            clip_start=edit["loop_start"], clip_end=edit["loop_end"], loop_mode=edit["loop_mode"],
         )
         info = validate_telegram_webm(output)
         extract_alpha_preview_png(output, thumbnail)
@@ -217,6 +257,12 @@ def retry_preview_clip(job: Job, idx: int, key_mode: str | None = None) -> dict:
             "width": info["width"],
             "height": info["height"],
             "alpha_fraction": round(float(info["alpha"]["transparent_fraction"]), 4),
+            "duration_s": round(float(info["duration"]), 2),
+            "fps": round(float(info["fps"]), 1),
+            "alpha_ok": float(info["alpha"]["transparent_fraction"]) >= 0.005,
+            "telegram_ready": True,
+            "source_duration": round(float(src_duration), 2),
+            "_loop_edit": edit,
         })
     except Exception as exc:
         output.unlink(missing_ok=True)
@@ -240,6 +286,7 @@ def publish_preview_job(
     user_id: int,
     order: list[int],
     set_name: Optional[str],
+    emojis: Optional[dict[int, str]] = None,
     job: Job | None = None,
 ) -> dict:
     if job is None:
@@ -274,18 +321,20 @@ def publish_preview_job(
 
     job.phase = "publish"
     job.stage = "publishing to Telegram"
+    emoji_list = [(emojis or {}).get(idx) or "🔥" for idx in order] if emojis else None
     links = uploader.publish_with_spillover(
         paths,
         set_name_base=_safe_base(title),
         set_title=title,
         existing_set_name=set_name,
+        emojis=emoji_list,
     )
     _record_links(user_id, links)
     total = sum(int(link.get("count", 0)) for link in links)
     job.links = links
     job.stage = "complete"
 
-    text = "Sticker Forge finished â\n\n" + "\n".join(f"{x.get('title', 'Sticker set')}: {x['link']}" for x in links)
+    text = "Sticker Forge finished ✅\n\n" + "\n".join(f"{x.get('title', 'Sticker set')}: {x['link']}" for x in links)
     try:
         dm(user_id, text)
     except Exception:
@@ -355,15 +404,15 @@ def forge_and_upload(
         job.links = links
 
         if chat_id:
-            lines = ["Sticker set forged â", ""]
+            lines = ["Sticker set forged ✅", ""]
             lines.extend(link["link"] for link in links)
             if failed:
-                lines.extend(["", f"â ï¸ {len(failed)} clip(s) skipped:", *failed[:5]])
+                lines.extend(["", f"⚠️ {len(failed)} clip(s) skipped:", *failed[:5]])
             dm(chat_id, "\n".join(lines))
             if config.SEND_DEBUG_WEBM:
                 for idx, file in enumerate(successful):
                     try:
-                        dm_document(chat_id, file, f"ð¬ Debug WebM {idx + 1}/{len(successful)}")
+                        dm_document(chat_id, file, f"🔬 Debug WebM {idx + 1}/{len(successful)}")
                     except Exception:
                         log.exception("Could not send debug WebM")
 
