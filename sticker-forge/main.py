@@ -129,6 +129,7 @@ async def api_forge(
     title: str = Form("My Stickers"),
     theme: str = Form("default"),
     key_mode: str = Form("auto"),
+    edits: str | None = Form(None),
     files: list[UploadFile] = File(...),
 ):
     user = _auth(init_data)
@@ -168,6 +169,13 @@ async def api_forge(
                 raise HTTPException(status_code=400, detail=f"{original} is empty")
             saved.append(str(path))
             names.append(original)
+        parsed_edits: dict[int, dict] = {}
+        if edits:
+            try:
+                raw = json.loads(edits)
+                parsed_edits = {int(k): v for k, v in raw.items()}
+            except Exception:
+                raise HTTPException(status_code=400, detail="edits must be a JSON object keyed by clip index")
         prefs.set_theme_pref(user.id, theme)
         job = STORE.submit(
             encode_preview,
@@ -177,6 +185,7 @@ async def api_forge(
             theme,
             title,
             key_mode,
+            parsed_edits,
             owner_id=user.id,
         )
         return {"job_id": job.id, "job_token": job_token(job.id, user.id)}
@@ -237,11 +246,17 @@ def api_retry(
     job_id: str = Form(...),
     idx: int = Form(...),
     key_mode: str | None = Form(None),
+    loop_start: float | None = Form(None),
+    loop_end: float | None = Form(None),
+    loop_mode: str | None = Form(None),
 ):
     user = _auth(init_data)
     try:
         job = STORE.require_owned(job_id, user.id)
-        return retry_preview_clip(job, idx, key_mode=key_mode)
+        return retry_preview_clip(
+            job, idx, key_mode=key_mode,
+            loop_start=loop_start, loop_end=loop_end, loop_mode=loop_mode,
+        )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Job not found or expired") from exc
     except PermissionError as exc:
@@ -256,6 +271,7 @@ def api_publish(
     job_id: str = Form(...),
     order: str = Form(...),
     set_name: str | None = Form(None),
+    emojis: str | None = Form(None),
 ):
     user = _auth(init_data)
     try:
@@ -270,12 +286,20 @@ def api_publish(
             raise ValueError
     except Exception as exc:
         raise HTTPException(status_code=400, detail="order must be a JSON list of clip indices") from exc
+    parsed_emojis: dict[int, str] = {}
+    if emojis:
+        try:
+            raw = json.loads(emojis)
+            parsed_emojis = {int(k): v for k, v in raw.items()}
+        except Exception:
+            pass  # cosmetic feature — never block publishing over a bad emoji payload
     publish_job = STORE.submit(
         publish_preview_job,
         source.id,
         user.id,
         parsed,
         set_name or None,
+        parsed_emojis,
         owner_id=user.id,
     )
     return {"job_id": publish_job.id, "job_token": job_token(publish_job.id, user.id)}
