@@ -16,6 +16,8 @@ TELEGRAM_MAX_DURATION = 3.0
 TELEGRAM_MAX_FPS = 30.0
 TELEGRAM_MAX_SIDE = 512
 
+LOOP_MODES = {"trim", "ping_pong", "speed_fit"}
+
 
 class StickerProcessingError(RuntimeError):
     pass
@@ -138,10 +140,11 @@ def validate_telegram_webm(path: str | Path, max_bytes: int = TELEGRAM_MAX_BYTES
     return info
 
 
-def _sample_frames(input_path: Path, temp_dir: Path, max_duration: float) -> list[Path]:
+def _sample_frames(input_path: Path, temp_dir: Path, max_duration: float, start: float = 0.0) -> list[Path]:
     pattern = temp_dir / "sample_%02d.png"
     cmd = [
-        "ffmpeg", "-v", "error", "-y", "-i", str(input_path),
+        "ffmpeg", "-v", "error", "-y",
+        "-ss", f"{max(0.0, start):.3f}", "-i", str(input_path),
         "-t", str(min(max_duration, 3.0)),
         "-vf", "fps=2,scale=192:-2:flags=area",
         "-frames:v", "6", str(pattern),
@@ -302,6 +305,160 @@ def extract_alpha_preview_png(webm_path: str | Path, output_png: str | Path, at_
     raise StickerProcessingError(f"Could not create transparent preview PNG: {last_error}")
 
 
+def _resolve_window(
+    source_duration: float,
+    clip_start: float,
+    clip_end: Optional[float],
+    loop_mode: str,
+) -> tuple[float, float, float]:
+    """Validate and normalize a clip selection. Raises StickerValidationError
+    on any of the weird-case inputs (start>end, zero-length, beyond duration)."""
+    clip_start = max(0.0, float(clip_start or 0.0))
+    if source_duration > 0 and clip_start >= source_duration:
+        raise StickerValidationError(
+            f"clip_start ({clip_start:.2f}s) is beyond the source duration ({source_duration:.2f}s)"
+        )
+    if clip_end is None:
+        clip_end = min(source_duration, clip_start + TELEGRAM_MAX_DURATION) if source_duration > 0 else clip_start + TELEGRAM_MAX_DURATION
+    clip_end = float(clip_end)
+    if source_duration > 0:
+        clip_end = min(clip_end, source_duration)
+    if clip_end <= clip_start:
+        raise StickerValidationError(
+            f"clip_end ({clip_end:.2f}s) must be greater than clip_start ({clip_start:.2f}s)"
+        )
+    selected = clip_end - clip_start
+    if selected < 0.05:
+        raise StickerValidationError(f"Selection is too short ({selected:.3f}s); minimum is 0.05s")
+    if loop_mode == "trim" and selected > TELEGRAM_MAX_DURATION + 0.05:
+        raise StickerValidationError(
+            f"Selection is {selected:.2f}s; trim mode allows at most {TELEGRAM_MAX_DURATION}s. "
+            f"Use loop_mode='speed_fit' to compress it, or shorten the selection."
+        )
+    return clip_start, clip_end, selected
+
+
+def _build_processed_source(
+    input_path: Path,
+    temp_dir: Path,
+    clip_start: float,
+    duration: float,
+    key_color: str,
+    similarity: float,
+    blend: float,
+    crop: Optional[tuple[float, float, float, float]],
+    green_risk: float,
+    key_mode: str,
+    target_size: int,
+    verbose: bool,
+) -> Path:
+    """Stage 1: crop + chroma key + despill + scale the selected window into a
+    high-quality alpha intermediate. This runs the expensive filter chain
+    exactly once, before any loop-mode transform or bitrate search."""
+    filters: list[str] = ["format=rgba"]
+    if crop:
+        x, y, w, h = crop
+        filters.append(f"crop=iw*{w:.6f}:ih*{h:.6f}:iw*{x:.6f}:ih*{y:.6f}")
+    filters.append(f"colorkey=color={key_color}:similarity={similarity:.5f}:blend={blend:.5f}")
+
+    if key_mode == "strong":
+        despill_mix, despill_expand = 0.46, 0.11
+    elif key_mode == "gentle":
+        despill_mix, despill_expand = 0.0, 0.0
+    elif green_risk >= 0.035:
+        despill_mix, despill_expand = 0.0, 0.0
+    else:
+        despill_mix, despill_expand = 0.28, 0.07
+    if despill_mix > 0:
+        filters.append(f"despill=type=green:mix={despill_mix:.2f}:expand={despill_expand:.2f}")
+
+    filters.extend([
+        f"scale={target_size}:{target_size}:force_original_aspect_ratio=decrease:flags=lanczos",
+        "setsar=1",
+        "fps=30",
+        "format=yuva420p",
+    ])
+    vf = ",".join(filters)
+
+    intermediate = temp_dir / "intermediate.webm"
+    cmd = [
+        "ffmpeg", "-v", "error", "-y",
+        "-ss", f"{clip_start:.3f}", "-i", str(input_path),
+        "-t", f"{duration:.3f}",
+        "-vf", vf,
+        "-an", "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p",
+        "-auto-alt-ref", "0", "-b:v", "3M",
+        "-deadline", "good", "-cpu-used", "2", "-row-mt", "1",
+        "-metadata:s:v:0", "alpha_mode=1",
+        str(intermediate),
+    ]
+    _run(cmd, verbose=verbose)
+    return intermediate
+
+
+def _apply_loop_mode(
+    source: Path,
+    temp_dir: Path,
+    loop_mode: str,
+    selected_duration: float,
+    verbose: bool,
+) -> tuple[Path, float]:
+    """Stage 2: turn the already-processed alpha clip into the final
+    pre-compression clip according to loop_mode. Returns (path, duration)."""
+    if loop_mode == "trim":
+        return source, min(selected_duration, TELEGRAM_MAX_DURATION)
+
+    if loop_mode == "ping_pong":
+        # Forward + reverse of the SAME selection = 2x the selected duration.
+        # If that exceeds Telegram's 3s ceiling, retime (speed up) uniformly
+        # rather than silently truncating the reverse half.
+        combined_duration = selected_duration * 2
+        out = temp_dir / "pingpong.webm"
+        filter_complex = (
+            "[0:v]split=2[fwd][rev_src];"
+            "[rev_src]reverse[rev];"
+            "[fwd][rev]concat=n=2:v=1:a=0[looped]"
+        )
+        if combined_duration > TELEGRAM_MAX_DURATION + 0.02:
+            speed = combined_duration / TELEGRAM_MAX_DURATION
+            filter_complex += f";[looped]setpts=PTS/{speed:.6f},fps=30[out]"
+            output_duration = TELEGRAM_MAX_DURATION
+        else:
+            filter_complex += ";[looped]fps=30[out]"
+            output_duration = combined_duration
+        cmd = [
+            "ffmpeg", "-v", "error", "-y", "-i", str(source),
+            "-filter_complex", filter_complex, "-map", "[out]",
+            "-an", "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p",
+            "-auto-alt-ref", "0", "-b:v", "3M",
+            "-deadline", "good", "-cpu-used", "2", "-row-mt", "1",
+            "-metadata:s:v:0", "alpha_mode=1",
+            str(out),
+        ]
+        _run(cmd, verbose=verbose)
+        return out, output_duration
+
+    if loop_mode == "speed_fit":
+        # Only accelerate an over-long selection. Never slow down a short one.
+        if selected_duration <= TELEGRAM_MAX_DURATION + 0.02:
+            return source, selected_duration
+        speed = selected_duration / TELEGRAM_MAX_DURATION
+        out = temp_dir / "speedfit.webm"
+        cmd = [
+            "ffmpeg", "-v", "error", "-y", "-i", str(source),
+            "-vf", f"setpts=PTS/{speed:.6f},fps=30",
+            "-an", "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p",
+            "-auto-alt-ref", "0", "-b:v", "3M",
+            "-deadline", "good", "-cpu-used", "2", "-row-mt", "1",
+            "-metadata:s:v:0", "alpha_mode=1",
+            str(out),
+        ]
+        _run(cmd, verbose=verbose)
+        return out, TELEGRAM_MAX_DURATION
+
+    raise StickerValidationError(f"Unknown loop_mode: {loop_mode!r}")
+
+
 def process_green_screen_to_sticker(
     input_video: str,
     output_webm: Optional[str] = None,
@@ -312,6 +469,9 @@ def process_green_screen_to_sticker(
     blend: Optional[float] = None,
     key_mode: str = "auto",
     auto_crop: bool = True,
+    clip_start: float = 0.0,
+    clip_end: Optional[float] = None,
+    loop_mode: str = "trim",
     overwrite: bool = False,
     verbose: bool = False,
 ) -> str:
@@ -319,6 +479,15 @@ def process_green_screen_to_sticker(
 
     key_mode: "gentle" preserves green foreground detail, "auto" estimates the
     screen color/variance from frame borders, and "strong" removes dirtier screens.
+
+    clip_start/clip_end: seconds within the source video to select (Loop Studio).
+    Defaults to the whole clip capped at TELEGRAM_MAX_DURATION, matching the
+    old behavior exactly when left unset.
+
+    loop_mode:
+      "trim"       - use the selection as-is (old default behavior)
+      "ping_pong"  - forward + reverse of the selection, retimed to fit 3s
+      "speed_fit"  - if selection > 3s, accelerate to fit; otherwise unchanged
     """
     input_path = Path(input_video).resolve()
     if not input_path.is_file():
@@ -328,9 +497,18 @@ def process_green_screen_to_sticker(
         raise FileExistsError(f"Output already exists: {output_path}")
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
+    loop_mode = (loop_mode or "trim").strip().lower()
+    if loop_mode not in LOOP_MODES:
+        raise StickerValidationError(f"Unknown loop_mode: {loop_mode!r}; expected one of {sorted(LOOP_MODES)}")
+
+    source_info = inspect_video(input_path)
+    clip_start, clip_end, selected_duration = _resolve_window(
+        source_info["duration"], clip_start, clip_end, loop_mode
+    )
+
     temp_dir = Path(tempfile.mkdtemp(prefix="sticker_forge_"))
     try:
-        frames = _sample_frames(input_path, temp_dir, max_duration_s)
+        frames = _sample_frames(input_path, temp_dir, selected_duration, start=clip_start)
         key_color, auto_similarity, auto_blend = _estimate_key(frames, key_mode)
         sim = float(similarity) if similarity is not None else auto_similarity
         bl = float(blend) if blend is not None else auto_blend
@@ -338,34 +516,16 @@ def process_green_screen_to_sticker(
         crop = _estimate_crop(frames, key_rgb, sim) if auto_crop else None
         green_risk = _foreground_green_risk(frames, key_rgb, sim)
 
-        filters: list[str] = ["format=rgba"]
-        if crop:
-            x, y, w, h = crop
-            filters.append(f"crop=iw*{w:.6f}:ih*{h:.6f}:iw*{x:.6f}:ih*{y:.6f}")
-        filters.append(f"colorkey=color={key_color}:similarity={sim:.5f}:blend={bl:.5f}")
+        processed = _build_processed_source(
+            input_path, temp_dir, clip_start, selected_duration,
+            key_color, sim, bl, crop, green_risk, key_mode, target_size, verbose,
+        )
+        looped, _output_duration = _apply_loop_mode(
+            processed, temp_dir, loop_mode, selected_duration, verbose
+        )
 
-        # Despill cleans green edge contamination, but it can also bleach real
-        # green foreground objects. Gentle disables it; Auto detects that risk.
-        if key_mode == "strong":
-            despill_mix, despill_expand = 0.46, 0.11
-        elif key_mode == "gentle":
-            despill_mix, despill_expand = 0.0, 0.0
-        elif green_risk >= 0.035:
-            despill_mix, despill_expand = 0.0, 0.0
-        else:
-            despill_mix, despill_expand = 0.28, 0.07
-        if despill_mix > 0:
-            filters.append(f"despill=type=green:mix={despill_mix:.2f}:expand={despill_expand:.2f}")
-
-        filters.extend([
-            f"scale={target_size}:{target_size}:force_original_aspect_ratio=decrease:flags=lanczos",
-            "setsar=1",
-            "fps=30",
-            "format=yuva420p",
-        ])
-        vf = ",".join(filters)
-
-        # Retry progressively smaller bitrates until Telegram's 256 KB ceiling is met.
+        # Bitrate search only re-encodes the already-processed, already-sized,
+        # already-looped clip. No crop/colorkey/scale work happens again here.
         candidates = [bitrate, "190K", "160K", "130K", "105K", "85K", "65K"]
         seen = set()
         last_error: Exception | None = None
@@ -373,11 +533,9 @@ def process_green_screen_to_sticker(
             if candidate in seen:
                 continue
             seen.add(candidate)
-            temp_output = temp_dir / f"processed_{candidate}.webm"
+            temp_output = temp_dir / f"final_{candidate}.webm"
             cmd = [
-                "ffmpeg", "-v", "error", "-y", "-i", str(input_path),
-                "-t", str(min(max_duration_s, 3.0)),
-                "-vf", vf,
+                "ffmpeg", "-v", "error", "-y", "-i", str(looped),
                 "-an", "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p",
                 "-auto-alt-ref", "0", "-b:v", candidate,
                 "-deadline", "good", "-cpu-used", "4", "-row-mt", "1",
